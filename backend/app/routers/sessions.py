@@ -1,7 +1,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,7 +50,7 @@ async def register_session(
     db:           AsyncSession = Depends(get_db),
     current_user: dict         = Depends(get_current_user),
 ):
-    created = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    created = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     result  = await db.execute(select(SessionRecord).where(SessionRecord.id == body.id))
     record  = result.scalar_one_or_none()
     username = current_user.get("username", "unknown")

@@ -163,7 +163,7 @@ function navigate(page) {
 
   const bcPage = document.getElementById('bcPage');
   if (bcPage) {
-    const labels = { dashboard:'Dashboard', mapping:'Mapping Manager', databases:'Database Registry', sessions:'Session Monitor', settings:'Settings', activity:'Update Activity', adminlogs:'Admin Logs' };
+    const labels = { dashboard:'Dashboard', mapping:'Mapping Manager', databases:'Database Registry', sessions:'Session Monitor', settings:'Settings', activity:'Update Activity', adminlogs:'Admin Logs', erd:'Database Explorer' };
     bcPage.textContent = labels[page] || page;
   }
   if (page === 'activity') {

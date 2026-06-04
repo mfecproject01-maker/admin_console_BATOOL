@@ -11,7 +11,7 @@ routers/mappings.py
 """
 import logging
 from typing import Optional
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, field_validator
@@ -109,7 +109,7 @@ class MappingUpdate(BaseModel):
 
 
 def _today() -> "date":
-    return datetime.utcnow().date()
+    return datetime.now(timezone.utc).date()
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────

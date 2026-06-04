@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
 from typing import List, Optional
+import json
 
 
 class Settings(BaseSettings):
@@ -25,8 +26,6 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5500",
         "http://127.0.0.1:5501",
         "null",
-        "https://ba-tool-for-multiple-db.vercel.app",
-        "https://admin-console-for-batool-91pz.vercel.app",
     ]
     ALLOWED_ORIGIN_REGEX: Optional[str] = (
         r"https://admin-console-for-batool(-[a-z0-9]+)?\.vercel\.app"
@@ -40,12 +39,11 @@ class Settings(BaseSettings):
             if not value:
                 return []
             if value.startswith("["):
-                return value
+                return json.loads(value)
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
 
-    class Config:
-        env_file = ".env"
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
 settings = Settings()

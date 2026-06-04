@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
@@ -22,7 +22,7 @@ class RefreshRequest(BaseModel):
 
 async def _upsert_auth_session(db: AsyncSession, username: str, ttl_minutes: int | None = None) -> None:
     session_id = f"auth-{username}"
-    created = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    created = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     ttl = ttl_minutes if ttl_minutes is not None else settings.ACCESS_TOKEN_EXPIRE_MINUTES
     result = await db.execute(select(SessionRecord).where(SessionRecord.id == session_id))
     record = result.scalar_one_or_none()

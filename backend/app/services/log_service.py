@@ -15,7 +15,7 @@ from app.schemas.schemas import LogEntry
 from app.db.database import AsyncSessionLocal
 from app.db.models import BatoolLog
 
-BA_TOOL_URL = "https://ba-tool-backend.onrender.com"
+BA_TOOL_URL = "https://ba-tool-yvb0.onrender.com"
 
 _last_seen_id: int = 0
 

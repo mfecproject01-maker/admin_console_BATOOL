@@ -429,6 +429,10 @@
       <span>Admin Logs</span>
       <span class="nav-badge" id="adminLogsBadge" style="display:none">0</span>
     </a>
+    <a class="nav-item" data-page="erd" href="#">
+      <i class="nav-icon">◫</i>
+      <span>Database Explorer</span>
+    </a>
     <a class="nav-item" data-page="settings" href="#">
       <i class="nav-icon">⚙</i>
       <span>Settings</span>
@@ -1110,6 +1114,27 @@
           <button class="btn btn-secondary" onclick="closeSystemLogRetentionModal()">ยกเลิก</button>
           <button class="btn btn-primary" onclick="saveSystemLogRetention()">บันทึก</button>
         </div>
+      </div>
+    </div>
+
+    <div class="page hidden" id="page-erd">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Database Explorer</h1>
+          <p class="page-desc">Visualize tables, columns, and relationships as an interactive ERD</p>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-ghost" onclick="document.getElementById('erd-frame').contentWindow.location.reload()">↻ Refresh</button>
+          <a class="btn btn-ghost" href="erd/erd.html" target="_blank">⤢ Open full screen</a>
+        </div>
+      </div>
+      <div style="border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--surface);height:calc(100vh - 140px);">
+        <iframe
+          id="erd-frame"
+          src="erd/erd.html"
+          style="width:100%;height:100%;border:none;display:block;"
+          title="Database Explorer"
+        ></iframe>
       </div>
     </div>
 

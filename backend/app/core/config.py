@@ -17,18 +17,19 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
 
     ALLOWED_ORIGINS: List[str] = [
-        "http://localhost",
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:5500",
-        "http://localhost:5501",
-        "http://127.0.0.1",
-        "http://127.0.0.1:5500",
-        "http://127.0.0.1:5501",
-        "null",
-        "https://admin-console-batool-6a2wlixh1-mfecproject01-makers-projects.vercel.app",
-        "https://ba-tool-4bkpuk5mj-mfecproject01-makers-projects.vercel.app",
-    ]
+    "http://localhost",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:5500",
+    "http://localhost:5501",
+    "http://127.0.0.1",
+    "http://127.0.0.1:5500",
+    "http://127.0.0.1:5501",
+    "null",
+    "https://admin-console-batool.vercel.app",
+    "https://admin-console-batool-6a2wlixh1-mfecproject01-makers-projects.vercel.app",
+    "https://ba-tool-4bkpuk5mj-mfecproject01-makers-projects.vercel.app",
+]
     ALLOWED_ORIGIN_REGEX: Optional[str] = (
         r"https://admin-console-for-batool(-[a-z0-9]+)?\.vercel\.app"
     )

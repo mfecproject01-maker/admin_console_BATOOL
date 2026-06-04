@@ -1,5 +1,5 @@
 function getDefaultApiUrl() {
-  return 'https://admin-console-for-batool.onrender.com';
+  return 'https://admin-console-batool.onrender.com';
 }
 
 const DEFAULT_API_URL = getDefaultApiUrl();

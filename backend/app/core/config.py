@@ -27,11 +27,11 @@ class Settings(BaseSettings):
     "http://127.0.0.1:5501",
     "null",
     "https://admin-console-batool.vercel.app",
-    "https://admin-console-batool-6a2wlixh1-mfecproject01-makers-projects.vercel.app",
-    "https://ba-tool-4bkpuk5mj-mfecproject01-makers-projects.vercel.app",
+    
+    "https://ba-tool-nine.vercel.app",
 ]
     ALLOWED_ORIGIN_REGEX: Optional[str] = (
-        r"https://admin-console-for-batool(-[a-z0-9]+)?\.vercel\.app"
+        r"https://admin-console-batool(-[a-z0-9]+)*\.vercel\.app|https://ba-tool(-[a-z0-9]+)*-mfecproject01-makers-projects\.vercel\.app"
     )
 
     @field_validator("ALLOWED_ORIGINS", mode="before")

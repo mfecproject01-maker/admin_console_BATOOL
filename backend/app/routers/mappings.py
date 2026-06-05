@@ -11,7 +11,7 @@ routers/mappings.py
 """
 import logging
 from typing import Optional
-from datetime import datetime, date, timezone
+from datetime import datetime, date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, field_validator
@@ -109,7 +109,7 @@ class MappingUpdate(BaseModel):
 
 
 def _today() -> "date":
-    return datetime.now(timezone.utc).date()
+    return datetime.utcnow().date()
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -193,6 +193,13 @@ async def update_mapping(
     for field, value in body.dict(exclude_none=True).items():
         setattr(record, field, value)
     record.updated = _today()
+
+    # รีเซ็ต sync state เสมอเมื่อ rule ถูกแก้ไข — เพื่อให้ sync engine pick up rule นี้ในรอบถัดไป
+    if record.status in ("active", "synced", "error"):
+        record.status = "pending"
+    record.synced_at     = None
+    record.error_message = None
+    record.retry_count   = 0
 
     try:
         await db.commit()

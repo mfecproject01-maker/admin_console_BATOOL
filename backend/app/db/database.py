@@ -200,7 +200,7 @@ async def init_db():
                 standard_id  INTEGER,
                 created_at   TIMESTAMPTZ  DEFAULT NOW(),
                 updated_at   TIMESTAMPTZ  DEFAULT NOW(),
-                CONSTRAINT uq_raw_mapping UNIQUE (db_id, raw_type)
+                CONSTRAINT unique_mapping_idx UNIQUE (db_id, raw_type, logical_type, source_type, standard_id)
             )
         """))
         await conn.execute(text(

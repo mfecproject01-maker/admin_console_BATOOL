@@ -18,7 +18,7 @@ def _today() -> date:
 class MappingRule(Base):
     __tablename__ = "mapping_rules"
     __table_args__ = (
-        UniqueConstraint("src_db", "raw_type", "dest_db", name="uq_mapping_rule"),
+        UniqueConstraint("src_db", "source_type", "raw_type", "dest_db", "final_type", name="uq_mapping_rules"),
         Index("ix_mapping_src_db",  "src_db"),
         Index("ix_mapping_dest_db", "dest_db"),
         Index("ix_mapping_status",  "status"),
@@ -35,7 +35,7 @@ class MappingRule(Base):
     confidence:    Mapped[int]            = mapped_column(Integer,     default=100)
     status:        Mapped[str]            = mapped_column(String(32),  default="draft")
     updated:       Mapped[date]           = mapped_column(Date,        default=_today)
-    error_message: Mapped[Optional[str]]  = mapped_column(String(256), nullable=True, default=None)
+    error_message: Mapped[Optional[str]]  = mapped_column(String(512), nullable=True, default=None)
     synced_at:     Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     retry_count:   Mapped[int]            = mapped_column(Integer, default=0)
 

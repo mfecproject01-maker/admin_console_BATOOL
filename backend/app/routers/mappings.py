@@ -11,7 +11,7 @@ routers/mappings.py
 """
 import logging
 from typing import Optional
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, field_validator
@@ -108,8 +108,8 @@ class MappingUpdate(BaseModel):
         return v.strip()
 
 
-def _today() -> "date":
-    return datetime.utcnow().date()
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -141,7 +141,7 @@ async def create_mapping(
     db:           AsyncSession = Depends(get_db),
     current_user: dict         = Depends(get_current_user),
 ):
-    record = MappingRule(**body.dict(), updated=_today())
+    record = MappingRule(**body.dict(), updated=_now())
     db.add(record)
     try:
         await db.commit()
@@ -192,7 +192,7 @@ async def update_mapping(
 
     for field, value in body.dict(exclude_none=True).items():
         setattr(record, field, value)
-    record.updated = _today()
+    record.updated = _now()
 
     # รีเซ็ต sync state เสมอเมื่อ rule ถูกแก้ไข — เพื่อให้ sync engine pick up rule นี้ในรอบถัดไป
     record.status        = "pending"
@@ -314,7 +314,7 @@ async def bulk_import_mappings(
             final_type   = row.final_type.strip(),
             confidence   = row.confidence,
             status       = row.status,
-            updated      = _today(),
+            updated      = _now(),
         )
         db.add(record)
         try:
@@ -354,13 +354,6 @@ async def bulk_import_mappings(
         message=f"Import complete: {imported} imported, {skipped} skipped, {failed} failed",
         data={"imported": imported, "skipped": skipped, "failed": failed, "errors": errors},
     )
-
-
-# ── AI Generate ──────────────────────────────────────────────────────────────
-
-
-
-
 # ── NEW: Lookup endpoint for dropdown — GET /api/datatype-standard/list ───────
 
 @router.get("/datatype-standard/list", response_model=APIResponse)

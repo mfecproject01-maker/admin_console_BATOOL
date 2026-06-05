@@ -789,7 +789,7 @@ function editMapping(id) {
     if (logicalEl)    logicalEl.value    = m.logicalType;
     if (finalTypeEl)  finalTypeEl.value  = m.finalType;
     if (confidenceEl) confidenceEl.value = m.confidence;
-    if (statusEl)     statusEl.value     = m.status;
+    _syncStatusPill(m.status || 'pending');
 
     ['mSrcDb', 'mDestDb', 'mMasterType', 'mSourceType', 'mRawType', 'mLogicalType', 'mFinalType']
       .forEach(clearFieldError);
@@ -829,6 +829,20 @@ function bulkApprove() {
     .catch(e => showToast('Approve failed: ' + e.message, 'error'));
 }
 
+function selectStatusPill(btn) {
+  document.querySelectorAll('#mStatusPills .status-pill, #mFormFields .status-pill').forEach(b => b.classList.remove('active-pill'));
+  btn.classList.add('active-pill');
+  document.getElementById('mStatus').value = btn.dataset.val;
+}
+
+function _syncStatusPill(val) {
+  document.querySelectorAll('#mFormFields .status-pill').forEach(b => {
+    b.classList.toggle('active-pill', b.dataset.val === val);
+  });
+  const el = document.getElementById('mStatus');
+  if (el) el.value = val;
+}
+
 function openAddMapping() {
   document.getElementById('mappingModalTitle').textContent = 'Add Mapping Rule';
 
@@ -848,10 +862,9 @@ function openAddMapping() {
     clearFieldError(id);
   });
 
-  const confEl   = document.getElementById('mConfidence');
-  const statusEl = document.getElementById('mStatus');
-  if (confEl)   confEl.value   = 100;
-  if (statusEl) statusEl.value = 'pending';
+  const confEl = document.getElementById('mConfidence');
+  if (confEl) confEl.value = 100;
+  _syncStatusPill('pending');
 
   delete document.getElementById('mappingModal').dataset.editId;
   loadMappingFormOptions();

@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE                 = 100
 DEFAULT_SYNC_INTERVAL_SEC  = 300   # 5 นาที — อ่านจาก rl_sync_interval ใน DB
 DEFAULT_MAX_RETRIES        = 3
-RETRY_BACKOFF_SECONDS      = [0, 0, 0]  # delay ก่อน retry แต่ละครั้ง
+RETRY_BACKOFF_SECONDS      = [0, 5, 30]  # delay ก่อน retry แต่ละครั้ง (retry1=0s, retry2=5s, retry3=30s)
 
 # ── Runtime state ─────────────────────────────────────────────────────────────
 _sync_running          = False

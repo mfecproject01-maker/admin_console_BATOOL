@@ -59,6 +59,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if not path.startswith("/api/") or path.startswith("/api/auth/login") or path.startswith("/api/health"):
             return await call_next(request)
+        if path.startswith("/ws/"):
+            return await call_next(request)
         if path.startswith("/api/system/maintenance") or path.startswith("/api/system/settings/public"):
             return await call_next(request)
 

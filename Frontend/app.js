@@ -447,7 +447,7 @@ function renderMappingTable() {
         <td>${m.finalType}</td>
         <td><div class="confidence-bar"><div class="conf-track"><div class="conf-fill" style="width:${m.confidence}%"></div></div><span class="conf-txt">${m.confidence}%</span></div></td>
         <td><span class="badge badge-${m.status}">${m.status}</span></td>
-        <td>${m.updated}</td>
+        <td>${formatActivityDate(m.updated)}</td>
         <td>${(_currentRole === 'admin' || _currentRole === 'editor') ? `<div class="row-actions"><button class="row-btn" title="Edit" onclick="editMapping(${m.id})">✎</button>${_currentRole === 'admin' ? `<button class="row-btn danger" title="Delete" onclick="deleteMapping(${m.id})">✕</button>` : ''}</div>` : ''}</td>
       </tr>`).join('');
   }
@@ -2256,7 +2256,7 @@ async function openActivityDetail(id) {
           </div>
           <div style="grid-column:1/-1">
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px">วันที่ / เวลา</div>
-            <div style="font-size:13px;font-family:var(--mono)">${act.created_at ? new Date(act.created_at).toLocaleString('th-TH') : '—'}</div>
+            <div style="font-size:13px;font-family:var(--mono)">${formatActivityDate(act.created_at)}</div>
           </div>
         </div>
         ${detailHtml}
@@ -2857,7 +2857,7 @@ async function openAdminLogDetail(id) {
           <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Action</div><span class="badge badge-${{ create:'success', update:'warning', delete:'error', bulk_import:'info' }[act.action]||'draft'}">${act.action}</span></div>
           <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Target</div><div style="font-size:13px">${act.target_type}${act.target_id?' #'+act.target_id:''}</div></div>
           <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">สรุป</div><div style="font-size:13px">${act.summary||'—'}</div></div>
-          <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">วันที่ / เวลา</div><div style="font-size:13px;font-family:var(--mono)">${act.created_at?new Date(act.created_at).toLocaleString('th-TH'):'—'}</div></div>
+          <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">วันที่ / เวลา</div><div style="font-size:13px;font-family:var(--mono)">${formatActivityDate(act.created_at)}</div></div>
         </div>
         ${detailHtml}
       </div>`;
@@ -2983,8 +2983,8 @@ function _renderRetentionModalFields() {
     b.classList.toggle('active', parseInt(b.dataset.retHours) === _sysLogRetHours));
   const lastEl = document.getElementById('sysLogRetentionLastRun');
   const nextEl = document.getElementById('sysLogRetentionNextRun');
-  if (lastEl) lastEl.textContent = r.last_run ? new Date(r.last_run).toLocaleString('th-TH') : '—';
-  if (nextEl) nextEl.textContent = r.next_run ? new Date(r.next_run).toLocaleString('th-TH') : '—';
+  if (lastEl) lastEl.textContent = r.last_run ? formatLocalDateTime(r.last_run) : '—';
+  if (nextEl) nextEl.textContent = r.next_run ? formatLocalDateTime(r.next_run) : '—';
 }
 
 async function openSystemLogRetentionModal() {
@@ -3095,8 +3095,8 @@ function openClearSystemLogModal() {
   const r = _sysLogRetention || {};
   const lastEl = document.getElementById('sysLogSchedLastRun');
   const nextEl = document.getElementById('sysLogSchedNextRun');
-  if (lastEl) lastEl.textContent = r.last_run ? new Date(r.last_run).toLocaleString('th-TH') : '—';
-  if (nextEl) nextEl.textContent = r.next_run ? new Date(r.next_run).toLocaleString('th-TH') : '—';
+  if (lastEl) lastEl.textContent = r.last_run ? formatLocalDateTime(r.last_run) : '—';
+  if (nextEl) nextEl.textContent = r.next_run ? formatLocalDateTime(r.next_run) : '—';
 
   document.getElementById('clearSystemLogModal')?.classList.remove('hidden');
 }

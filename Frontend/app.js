@@ -153,6 +153,9 @@ window.addEventListener('resize', () => { if (!isMobile()) { closeMobileSidebar(
 // ════════════════════════════════════════════════════════════
 
 function navigate(page) {
+  // ปิด modal ทั้งหมดที่เปิดค้างอยู่ทุกครั้งที่เปลี่ยนหน้า
+  document.querySelectorAll('.modal-overlay:not(.hidden)').forEach(m => m.classList.add('hidden'));
+
   document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
   const target = document.getElementById('page-' + page);
   if (target) target.classList.remove('hidden');
@@ -236,7 +239,14 @@ function showToast(message, type = 'info') {
 //  MODAL
 // ════════════════════════════════════════════════════════════
 
-function openModal(id)  { const el = document.getElementById(id); if (el) el.classList.remove('hidden'); }
+function openModal(id) {
+  // ปิด modal อื่นที่เปิดค้างอยู่ก่อนเสมอ เพื่อป้องกัน modal ซ้อนทับกัน
+  document.querySelectorAll('.modal-overlay:not(.hidden)').forEach(m => {
+    if (m.id !== id) m.classList.add('hidden');
+  });
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('hidden');
+}
 function closeModal(id) { const el = document.getElementById(id); if (el) el.classList.add('hidden'); }
 
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
@@ -803,7 +813,9 @@ function deleteMapping(id) {
   const m = mappingData.find(r => r.id === id);
   if (!m) return;
   document.getElementById('deleteWarnText').textContent = `Delete mapping "${m.rawType} → ${m.finalType}"? This cannot be undone.`;
-  document.getElementById('deleteConfirmBtn').onclick = async () => {
+  const _delBtn = document.getElementById('deleteConfirmBtn');
+  if (_delBtn) _delBtn.textContent = 'Delete';
+  if (_delBtn) _delBtn.onclick = async () => {
     try { await apiCall(`/api/mappings/${id}`, { method: 'DELETE' }); selectedMappings.delete(id); showToast('Mapping rule deleted', 'info'); closeModal('deleteModal'); await fetchMappings(); }
     catch (e) { showToast('Delete failed: ' + e.message, 'error'); }
   };
@@ -813,7 +825,9 @@ function deleteMapping(id) {
 function bulkDelete() {
   if (!selectedMappings.size) return;
   document.getElementById('deleteWarnText').textContent = `Delete ${selectedMappings.size} selected mapping(s)? This cannot be undone.`;
-  document.getElementById('deleteConfirmBtn').onclick = async () => {
+  const _bulkDelBtn = document.getElementById('deleteConfirmBtn');
+  if (_bulkDelBtn) _bulkDelBtn.textContent = 'Delete';
+  if (_bulkDelBtn) _bulkDelBtn.onclick = async () => {
     try {
       await Promise.all([...selectedMappings].map(id => apiCall(`/api/mappings/${id}`, { method: 'DELETE' })));
       selectedMappings.clear(); showToast('Selected mappings deleted', 'info'); closeModal('deleteModal'); await fetchMappings();
@@ -1318,7 +1332,9 @@ function confirmDeleteDatabase(id) {
   const db = dbData.find(d => d.id === id);
   if (!db) return;
   document.getElementById('deleteWarnText').textContent = `Delete "${db.name}"? All associated mapping rules (${db.rules}) will also be removed.`;
-  document.getElementById('deleteConfirmBtn').onclick = async () => {
+  const _dbDelBtn = document.getElementById('deleteConfirmBtn');
+  if (_dbDelBtn) _dbDelBtn.textContent = 'Delete';
+  if (_dbDelBtn) _dbDelBtn.onclick = async () => {
     try { await apiCall(`/api/databases/${id}`, { method:'DELETE' }); showToast(`${db.name} removed`, 'warn'); closeModal('deleteModal'); await fetchDatabases(); }
     catch (e) { showToast('Delete failed: ' + e.message, 'error'); }
   };
@@ -1388,6 +1404,9 @@ function openAddDatabase() {
   if (preview) preview.style.display = 'none';
   document.getElementById('dbModalTitle').textContent = 'Add Database';
   delete document.getElementById('dbModal').dataset.editId;
+  // reset save button text ทุกครั้งที่เปิด Add
+  const saveBtn = document.querySelector('#dbModal .btn-primary');
+  if (saveBtn) saveBtn.textContent = 'Add Database';
   openModal('dbModal');
 }
 
@@ -1538,10 +1557,18 @@ function renderSessions() {
 }
 
 function revokeSession(id) {
+  const confirmBtn = document.getElementById('deleteConfirmBtn');
   document.getElementById('deleteWarnText').textContent = `Revoke session ${id}? The user will be disconnected immediately.`;
-  document.getElementById('deleteConfirmBtn').textContent = 'Revoke';
-  document.getElementById('deleteConfirmBtn').onclick = async () => {
-    try { await apiCall(`/api/sessions/${id}`, { method:'DELETE' }); showToast(`Session ${id} revoked`, 'warn'); closeModal('deleteModal'); await fetchSessions(); }
+  if (confirmBtn) confirmBtn.textContent = 'Revoke';
+  if (confirmBtn) confirmBtn.onclick = async () => {
+    try {
+      await apiCall(`/api/sessions/${id}`, { method:'DELETE' });
+      showToast(`Session ${id} revoked`, 'warn');
+      closeModal('deleteModal');
+      // reset button text กลับ
+      if (confirmBtn) confirmBtn.textContent = 'Delete';
+      await fetchSessions();
+    }
     catch (e) { showToast('Revoke failed: ' + e.message, 'error'); }
   };
   openModal('deleteModal');
@@ -2196,7 +2223,7 @@ async function openActivityDetail(id) {
   if (!overlay || !body) return;
 
   body.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text3)">กำลังโหลด…</div>`;
-  overlay.classList.remove('hidden');
+  openModal('activityDetailModal');
 
   try {
     const res  = await apiCall(`/api/activities/${id}`);
@@ -2413,7 +2440,7 @@ function openUserModal(userId = null) {
     actRow?.classList.add('hidden');
     document.getElementById('btnSaveUser').textContent = 'สร้างผู้ใช้';
   }
-  overlay.classList.remove('hidden');
+  openModal('userModal');
 }
 
 function closeUserModal() {
@@ -2484,7 +2511,7 @@ function openResetPwModal(userId, username) {
   if (nameEl) nameEl.textContent = username;
   if (inp)    inp.value = '';
   document.getElementById('newPwErr')?.classList.add('hidden');
-  overlay.classList.remove('hidden');
+  openModal('resetPwModal');
 }
 
 function closeResetPwModal() {
@@ -2569,7 +2596,7 @@ function openClearActivityModal() {
   });
 
   document.getElementById('btnConfirmClear').textContent = 'ยืนยันเคลียร์';
-  document.getElementById('clearActivityModal').classList.remove('hidden');
+  openModal('clearActivityModal');
 }
 
 function closeClearActivityModal() {
@@ -2824,7 +2851,7 @@ async function openAdminLogDetail(id) {
   const title   = document.getElementById('activityModalTitle');
   if (!overlay || !body) return;
   body.innerHTML = `<div style="padding:32px;text-align:center;color:var(--text3)">กำลังโหลด…</div>`;
-  overlay.classList.remove('hidden');
+  openModal('activityDetailModal');
   try {
     const res = await apiCall(`/api/activities/${id}`);
     const act = res.data;
@@ -3009,7 +3036,7 @@ async function openSystemLogRetentionModal() {
       b.classList.add('active');
     };
   });
-  document.getElementById('systemLogRetentionModal')?.classList.remove('hidden');
+  openModal('systemLogRetentionModal');
 }
 
 function closeSystemLogRetentionModal() {
@@ -3098,7 +3125,7 @@ function openClearSystemLogModal() {
   if (lastEl) lastEl.textContent = r.last_run ? formatLocalDateTime(r.last_run) : '—';
   if (nextEl) nextEl.textContent = r.next_run ? formatLocalDateTime(r.next_run) : '—';
 
-  document.getElementById('clearSystemLogModal')?.classList.remove('hidden');
+  openModal('clearSystemLogModal');
 }
 
 function closeClearSystemLogModal() {

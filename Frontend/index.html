@@ -458,28 +458,55 @@
 
 <div class="main-wrap" id="mainWrap">
 
-  <header class="topbar">
-    <button class="topbar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
-      <span></span><span></span><span></span>
-    </button>
-    <div class="topbar-breadcrumb">
-      <span class="bc-root">Admin</span>
-      <span class="bc-sep">›</span>
-      <span class="bc-page" id="bcPage">Dashboard</span>
+  <header class="topbar premium-header">
+    <div class="topbar-left brand-identity">
+      <button class="topbar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="brand-logo-top">
+        <span class="brand-icon-top">⬡</span>
+      </div>
+      <div class="brand-text-top">
+        <div class="main-title">BA Tool</div>
+        <div class="sub-title">Workspace Header</div>
+      </div>
     </div>
-    <div class="topbar-right">
-      <div class="topbar-search">
+
+    <div class="topbar-center workspace-capsule">
+      <div class="capsule-item env-indicator">
+        <span class="indicator-dot prod"></span> <span class="capsule-text">Production</span>
+      </div>
+      <div class="capsule-sep"></div>
+      <div class="capsule-item sync-status" id="topbarSyncStatus">
+        <span class="sync-icon">↻</span> <span class="capsule-text">Synced</span>
+      </div>
+      <div class="capsule-sep"></div>
+      <div class="capsule-item active-sessions" id="topbarActiveSessions">
+        <span class="sess-icon">👥</span> <span class="capsule-text"><span id="topbarUserCount">0</span> Users</span>
+      </div>
+      <div class="capsule-sep"></div>
+      <div class="capsule-item health-indicator">
+        <span class="health-heart">❤️</span> <span class="capsule-text">Healthy</span>
+      </div>
+    </div>
+
+    <div class="topbar-right user-control-center">
+      <div class="topbar-search premium-search">
         <span class="search-icon">⌕</span>
         <input type="text" placeholder="Search..." class="search-input" id="globalSearch" />
         <span class="search-kbd">⌘K</span>
       </div>
-      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+      <button class="theme-toggle premium-btn" id="themeToggle" aria-label="Toggle theme">
         <span class="theme-icon-dark">◑</span>
         <span class="theme-icon-light">○</span>
       </button>
+      <button class="notification-btn premium-btn" aria-label="Notifications">
+        <span class="notif-icon">🔔</span>
+        <span class="notif-badge">3</span>
+      </button>
       <div class="topbar-avatar-wrap" id="avatarWrap">
-        <div class="topbar-avatar" id="topbarAvatar" onclick="toggleAvatarMenu()" title="Account menu">MA</div>
-        <div class="avatar-dropdown hidden" id="avatarDropdown">
+        <div class="topbar-avatar premium-avatar" id="topbarAvatar" onclick="toggleAvatarMenu()" title="Account menu">MA</div>
+        <div class="avatar-dropdown hidden premium-dropdown" id="avatarDropdown">
           <div class="avatar-dd-user" id="avatarDdUser">—</div>
           <div class="avatar-dd-role" id="avatarDdRole">—</div>
           <div class="avatar-dd-sep"></div>
@@ -600,9 +627,10 @@
           <h1 class="page-title">Mapping Manager</h1>
           <p class="page-desc">Manage data type conversion rules across database pairs</p>
         </div>
-        <div class="page-actions">
-          <button class="btn btn-ghost" id="btnBulkImport" onclick="openBulkImport()">↑ Bulk Import</button>
-          <button class="btn btn-primary" id="btnAddRule" onclick="openAddMapping()">+ Add Rule</button>
+        <div class="page-actions" style="gap: 12px;">
+          <button class="btn btn-premium-sync" onclick="triggerSync()" id="syncBtn"><span class="sync-icon" style="display:inline-block;margin-right:4px;font-size:14px">↻</span> Sync Now</button>
+          <button class="btn btn-premium-import" id="btnBulkImport" onclick="openBulkImport()">↑ Bulk Import</button>
+          <button class="btn btn-premium-add" id="btnAddRule" onclick="openAddMapping()">+ Add Rule</button>
         </div>
       </div>
 

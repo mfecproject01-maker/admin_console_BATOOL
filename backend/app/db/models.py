@@ -34,7 +34,7 @@ class MappingRule(Base):
     final_type:    Mapped[str]            = mapped_column(String(128), default="")
     confidence:    Mapped[int]            = mapped_column(Integer,     default=100)
     status:        Mapped[str]            = mapped_column(String(32),  default="draft")
-    updated:       Mapped[date]           = mapped_column(Date,        default=_today)
+    updated:       Mapped[datetime]        = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     error_message: Mapped[Optional[str]]  = mapped_column(String(512), nullable=True, default=None)
     synced_at:     Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     retry_count:   Mapped[int]            = mapped_column(Integer, default=0)

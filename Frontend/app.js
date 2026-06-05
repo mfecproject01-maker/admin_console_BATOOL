@@ -1,5 +1,5 @@
 function getDefaultApiUrl() {
-  return 'https://admin-console-batool.onrender.com';
+  return 'https://admin-console-for-batool.onrender.com';
 }
 
 const DEFAULT_API_URL = getDefaultApiUrl();
@@ -299,11 +299,8 @@ async function refreshDashboard() {
     const sessionPayload = sessionsRes.status === 'fulfilled' ? (sessionsRes.value?.data || {}) : {};
     const sessionStats   = sessionPayload.stats    || { active: 0, warning: 0, expired: 0 };
     const sessionList    = sessionPayload.sessions || [];
-    const _now            = new Date();
-    const today           = `${_now.getFullYear()}-${String(_now.getMonth()+1).padStart(2,'0')}-${String(_now.getDate()).padStart(2,'0')}`;
-    // helper: แปลง ISO string จาก server เป็น local date string "YYYY-MM-DD"
-    const _localDate = (iso) => { const d = _parseServerTime(iso); if (!d) return ''; return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
-    const createdToday   = sessionList.filter(s => _localDate(s.created) === today).length;
+    const today          = new Date().toISOString().slice(0, 10);
+    const createdToday   = sessionList.filter(s => s.created?.startsWith(today)).length;
     const totalSessionRefs = sessionStats.active + sessionStats.warning + sessionStats.expired;
     const healthRate = totalSessionRefs ? Math.round((sessionStats.active / totalSessionRefs) * 100) : 100;
     const sessionCard = cardByLabel['Sessions'] || cardByLabel['Cache Store'];
@@ -314,10 +311,10 @@ async function refreshDashboard() {
     if (metrics[2]) { metrics[2].querySelector('.metric-val').textContent = sessionStats.active + sessionStats.warning; metrics[2].querySelector('.metric-sub').textContent = `${createdToday} created today`; }
 
     const logList          = logsRes.status === 'fulfilled' ? (logsRes.value?.data || []) : [];
-    const conversionsToday = logList.filter(l => l.message?.includes('Convert') && _localDate(l.timestamp) === today).length;
-    const warningsToday    = logList.filter(l => l.level === 'WARNING' && _localDate(l.timestamp) === today).length;
-    const errorCountToday  = logList.filter(l => (l.level || '').toUpperCase() === 'ERROR' && _localDate(l.timestamp) === today).length;
-    const logActiveToday   = logList.filter(l => _localDate(l.timestamp) === today).length;
+    const conversionsToday = logList.filter(l => l.message?.includes('Convert') && l.timestamp?.startsWith(today)).length;
+    const warningsToday    = logList.filter(l => l.level === 'WARNING' && l.timestamp?.startsWith(today)).length;
+    const errorCountToday  = logList.filter(l => (l.level || '').toUpperCase() === 'ERROR' && l.timestamp?.startsWith(today)).length;
+    const logActiveToday   = logList.filter(l => (l.timestamp || '').startsWith(today)).length;
     const healthPct        = Math.max(0, 100 - (errorCountToday * 5));
     const logCard = cardByLabel['Log Stream'];
     if (logCard) {
@@ -1463,6 +1460,8 @@ function renderOnlineUsers(users, total) {
   if (badge)     badge.textContent = total;
   const countEl  = document.getElementById('onlineUserCount');
   if (countEl)   countEl.textContent = total;
+  const topbarCount = document.getElementById('topbarUserCount');
+  if (topbarCount) topbarCount.textContent = total;
 
   const active   = users.filter(u => u.idle_seconds < 60).length;
   const expiring = users.filter(u => u.idle_seconds >= 60 && u.idle_seconds < 90).length;
@@ -1570,7 +1569,7 @@ async function fetchLogs() {
 }
 
 function appendLogLine(terminal, timestamp, level, message, sourceFile) {
-  const ts   = timestamp ? formatLocalDateTime(timestamp) : formatLocalDateTime(new Date().toISOString());
+  const ts   = (timestamp || new Date().toISOString()).slice(0, 19).replace('T', ' ');
   const line = document.createElement('div');
   line.className = 'log-line';
   const fileBadge = sourceFile
@@ -1940,13 +1939,13 @@ if (globalSearch) {
 
 async function loadSyncStatus() {
   const panel = document.getElementById('syncStatusPanel');
-  if (!panel) return;
   try {
     const res = await apiCall('/api/sync/status');
     const s = res.data || {};
     const m = s.last_metrics || {};
+    // ใช้ formatLocalDateTime() เพื่อ handle UTC timezone ถูกต้อง
     const lastRun = s.last_run_at
-      ? formatLocalFull(s.last_run_at)
+      ? formatLocalDateTime(s.last_run_at)
       : 'ยังไม่เคยรัน';
     const intervalMin = s.interval_minutes ?? Math.round((s.interval_seconds || 300) / 60);
     const stateLabel = s.running
@@ -1954,14 +1953,35 @@ async function loadSyncStatus() {
       : (s.scheduler_active
         ? '<span style="color:var(--success,#22c55e)">● พร้อม (scheduler ทำงาน)</span>'
         : '<span style="color:var(--danger,#ef4444)">● Scheduler หยุด</span>');
-    panel.innerHTML = `
-      <div>${stateLabel}</div>
-      <div>ช่วงเวลาอัตโนมัติ: <strong>${intervalMin}</strong> นาที</div>
-      <div>รอบล่าสุด: ${lastRun}</div>
-      <div>ผลลัพธ์ล่าสุด — processed: ${m.processed ?? 0}, synced: ${m.synced ?? 0}, errors: ${m.errors ?? 0}${m.elapsed_seconds != null ? ` (${m.elapsed_seconds}s)` : ''}</div>
-    `;
+    
+    if (panel) {
+      panel.innerHTML = `
+        <div>${stateLabel}</div>
+        <div>ช่วงเวลาอัตโนมัติ: <strong>${intervalMin}</strong> นาที</div>
+        <div>รอบล่าสุด: ${lastRun}</div>
+        <div>ผลลัพธ์ล่าสุด — processed: ${m.processed ?? 0}, synced: ${m.synced ?? 0}, errors: ${m.errors ?? 0}${m.elapsed_seconds != null ? ` (${m.elapsed_seconds}s)` : ''}</div>
+      `;
+    }
+
+    // Update Topbar Workspace Capsule Sync Status
+    const topbarSync = document.getElementById('topbarSyncStatus');
+    if (topbarSync) {
+      const capsuleText = topbarSync.querySelector('.capsule-text');
+      const syncIcon = topbarSync.querySelector('.sync-icon');
+      if (s.running) {
+        capsuleText.textContent = 'Syncing...';
+        capsuleText.style.color = 'var(--warn)';
+        syncIcon.style.color = 'var(--warn)';
+        syncIcon.style.animation = 'spin 1s linear infinite';
+      } else {
+        capsuleText.textContent = 'Synced';
+        capsuleText.style.color = 'var(--text2)';
+        syncIcon.style.color = 'var(--text2)';
+        syncIcon.style.animation = 'none';
+      }
+    }
   } catch (e) {
-    panel.textContent = 'โหลดสถานะไม่สำเร็จ: ' + e.message;
+    if (panel) panel.textContent = 'โหลดสถานะไม่สำเร็จ: ' + e.message;
   }
 }
 
@@ -2025,57 +2045,53 @@ function actionLabel(action) {
   return { create: '➕ Create', update: '✏ Update', delete: '✕ Delete', bulk_import: '⬆ Bulk' }[action] || action;
 }
 
-// ════════════════════════════════════════════════════════════
-//  DATE/TIME UTILITIES  — เวลาจากเครื่อง user ทั้งหมด
-//  ข้อมูลจาก server เก็บเป็น UTC ISO string (มี Z หรือ +00:00)
-//  ฟังก์ชันด้านล่างแปลงเป็น local time ของเครื่อง user เสมอ
-// ════════════════════════════════════════════════════════════
-
-/** parse ISO string จาก server ให้ถูกต้อง (เติม Z ถ้าไม่มี timezone) */
-function _parseServerTime(iso) {
-  if (!iso) return null;
-  let clean = String(iso).trim().replace(' ', 'T');
-  if (!clean.endsWith('Z') && !clean.includes('+') && !/[+-]\d{2}:\d{2}$/.test(clean)) {
-    clean += 'Z';
-  }
-  const d = new Date(clean);
-  return isNaN(d.getTime()) ? null : d;
-}
-
-/** "HH:MM:SS" ตาม local time ของ user */
-function formatLocalTime(iso) {
-  const d = _parseServerTime(iso);
-  if (!d) return iso || '—';
-  return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-}
-
-/** "YYYY-MM-DD HH:MM:SS" ตาม local time ของ user */
-function formatLocalDateTime(iso) {
-  const d = _parseServerTime(iso);
-  if (!d) return iso || '—';
-  const yyyy = d.getFullYear();
-  const mm   = String(d.getMonth() + 1).padStart(2, '0');
-  const dd   = String(d.getDate()).padStart(2, '0');
-  const hh   = String(d.getHours()).padStart(2, '0');
-  const min  = String(d.getMinutes()).padStart(2, '0');
-  const ss   = String(d.getSeconds()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
-}
-
-/** วันที่ (บรรทัดบน) + เวลา (บรรทัดล่าง) สำหรับ activity table */
 function formatActivityDate(iso) {
-  const d = _parseServerTime(iso);
-  if (!d) return '—';
-  const date = d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
-  const time = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-  return `<span style="display:block;font-size:12px;font-weight:600">${date}</span><span style="display:block;font-size:11px;color:var(--text3)">${time}</span>`;
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    const date = d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+    const time = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return `<span style="display:block;font-size:12px;font-weight:600">${date}</span><span style="display:block;font-size:11px;color:var(--text3)">${time}</span>`;
+  } catch { return iso; }
 }
 
-/** toLocaleString('th-TH') ตาม local time — แทน inline new Date(...).toLocaleString */
-function formatLocalFull(iso) {
-  const d = _parseServerTime(iso);
-  if (!d) return '—';
-  return d.toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'medium' });
+function formatLocalTime(iso) {
+  if (!iso) return '—';
+  try {
+    let clean = iso.trim().replace(' ', 'T');
+    if (!clean.endsWith('Z') && !clean.includes('+') && !clean.includes('GMT')) {
+      clean += 'Z';
+    }
+    const d = new Date(clean);
+    if (isNaN(d.getTime())) return iso;
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${hh}:${min}:${ss}`;
+  } catch {
+    return iso;
+  }
+}
+
+function formatLocalDateTime(iso) {
+  if (!iso) return '—';
+  try {
+    let clean = iso.trim().replace(' ', 'T');
+    if (!clean.endsWith('Z') && !clean.includes('+') && !clean.includes('GMT')) {
+      clean += 'Z';
+    }
+    const d = new Date(clean);
+    if (isNaN(d.getTime())) return iso;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+  } catch {
+    return iso;
+  }
 }
 
 async function fetchActivities() {
@@ -2227,7 +2243,7 @@ async function openActivityDetail(id) {
           </div>
           <div style="grid-column:1/-1">
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px">วันที่ / เวลา</div>
-            <div style="font-size:13px;font-family:var(--mono)">${formatLocalFull(act.created_at)}</div>
+            <div style="font-size:13px;font-family:var(--mono)">${act.created_at ? new Date(act.created_at).toLocaleString('th-TH') : '—'}</div>
           </div>
         </div>
         ${detailHtml}
@@ -2304,8 +2320,9 @@ function roleLabel(role) {
 }
 
 function fmtDate(iso) {
-  const d = _parseServerTime(iso);
-  return d ? d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleDateString('th-TH', { year:'numeric', month:'short', day:'numeric' }); }
+  catch { return iso; }
 }
 
 function renderUsersTable() {
@@ -2749,7 +2766,8 @@ function _renderAdminActivityTable() {
       const actionClass = { create:'success', update:'warning', delete:'error', bulk_import:'info', login:'active', logout:'draft' }[a.action] || 'draft';
       const actionLabel = { create:'➕ Create', update:'✏ Update', delete:'✕ Delete', bulk_import:'⬆ Bulk', login:'🔑 Login', logout:'🚪 Logout' }[a.action] || a.action;
       const dateStr = a.created_at ? (() => {
-        return formatActivityDate(a.created_at);
+        const d = new Date(a.created_at);
+        return `<span style="display:block;font-size:12px;font-weight:600">${d.toLocaleDateString('th-TH',{year:'numeric',month:'short',day:'numeric'})}</span><span style="display:block;font-size:11px;color:var(--text3)">${d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>`;
       })() : '—';
       return `<tr>
         <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${a.id}</td>
@@ -2826,7 +2844,7 @@ async function openAdminLogDetail(id) {
           <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Action</div><span class="badge badge-${{ create:'success', update:'warning', delete:'error', bulk_import:'info' }[act.action]||'draft'}">${act.action}</span></div>
           <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Target</div><div style="font-size:13px">${act.target_type}${act.target_id?' #'+act.target_id:''}</div></div>
           <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">สรุป</div><div style="font-size:13px">${act.summary||'—'}</div></div>
-          <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">วันที่ / เวลา</div><div style="font-size:13px;font-family:var(--mono)">${formatLocalFull(act.created_at)}</div></div>
+          <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">วันที่ / เวลา</div><div style="font-size:13px;font-family:var(--mono)">${act.created_at?new Date(act.created_at).toLocaleString('th-TH'):'—'}</div></div>
         </div>
         ${detailHtml}
       </div>`;
@@ -2952,8 +2970,8 @@ function _renderRetentionModalFields() {
     b.classList.toggle('active', parseInt(b.dataset.retHours) === _sysLogRetHours));
   const lastEl = document.getElementById('sysLogRetentionLastRun');
   const nextEl = document.getElementById('sysLogRetentionNextRun');
-  if (lastEl) lastEl.textContent = formatLocalFull(r.last_run);
-  if (nextEl) nextEl.textContent = formatLocalFull(r.next_run);
+  if (lastEl) lastEl.textContent = r.last_run ? new Date(r.last_run).toLocaleString('th-TH') : '—';
+  if (nextEl) nextEl.textContent = r.next_run ? new Date(r.next_run).toLocaleString('th-TH') : '—';
 }
 
 async function openSystemLogRetentionModal() {
@@ -3064,8 +3082,8 @@ function openClearSystemLogModal() {
   const r = _sysLogRetention || {};
   const lastEl = document.getElementById('sysLogSchedLastRun');
   const nextEl = document.getElementById('sysLogSchedNextRun');
-  if (lastEl) lastEl.textContent = formatLocalFull(r.last_run);
-  if (nextEl) nextEl.textContent = formatLocalFull(r.next_run);
+  if (lastEl) lastEl.textContent = r.last_run ? new Date(r.last_run).toLocaleString('th-TH') : '—';
+  if (nextEl) nextEl.textContent = r.next_run ? new Date(r.next_run).toLocaleString('th-TH') : '—';
 
   document.getElementById('clearSystemLogModal')?.classList.remove('hidden');
 }

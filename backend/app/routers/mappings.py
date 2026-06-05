@@ -195,8 +195,7 @@ async def update_mapping(
     record.updated = _today()
 
     # รีเซ็ต sync state เสมอเมื่อ rule ถูกแก้ไข — เพื่อให้ sync engine pick up rule นี้ในรอบถัดไป
-    if record.status in ("active", "synced", "error"):
-        record.status = "pending"
+    record.status        = "pending"
     record.synced_at     = None
     record.error_message = None
     record.retry_count   = 0

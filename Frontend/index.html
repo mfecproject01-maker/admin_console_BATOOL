@@ -473,20 +473,12 @@
     </div>
 
     <div class="topbar-center workspace-capsule">
-      <div class="capsule-item env-indicator">
-        <span class="indicator-dot prod"></span> <span class="capsule-text">Production</span>
-      </div>
-      <div class="capsule-sep"></div>
       <div class="capsule-item sync-status" id="topbarSyncStatus">
         <span class="sync-icon">↻</span> <span class="capsule-text">Synced</span>
       </div>
       <div class="capsule-sep"></div>
       <div class="capsule-item active-sessions" id="topbarActiveSessions">
         <span class="sess-icon">👥</span> <span class="capsule-text"><span id="topbarUserCount">0</span> Users</span>
-      </div>
-      <div class="capsule-sep"></div>
-      <div class="capsule-item health-indicator">
-        <span class="health-heart">❤️</span> <span class="capsule-text">Healthy</span>
       </div>
     </div>
 
@@ -499,10 +491,6 @@
       <button class="theme-toggle premium-btn" id="themeToggle" aria-label="Toggle theme">
         <span class="theme-icon-dark">◑</span>
         <span class="theme-icon-light">○</span>
-      </button>
-      <button class="notification-btn premium-btn" aria-label="Notifications">
-        <span class="notif-icon">🔔</span>
-        <span class="notif-badge">3</span>
       </button>
       <div class="topbar-avatar-wrap" id="avatarWrap">
         <div class="topbar-avatar premium-avatar" id="topbarAvatar" onclick="toggleAvatarMenu()" title="Account menu">MA</div>
@@ -1459,95 +1447,126 @@ MySQL,INT,PostgreSQL,INTEGER,approved</pre>
         <span id="mFormErrorText">Failed to load options.</span>
         <button class="btn btn-sm btn-ghost" style="margin-left:8px" onclick="loadMappingFormOptions()">Retry</button>
       </div>
-      <div class="form-grid" id="mFormFields">
+      <div id="mFormFields" style="display:flex;flex-direction:column;gap:16px">
 
-        <!-- Row 1: Source DB + Source Type -->
-        <div class="form-field">
-          <label class="form-label">Source DB <span style="color:var(--danger,#ef4444)">*</span></label>
-          <div class="searchable-select-wrap" data-ss="mSrcDb">
-            <input type="text" class="form-input" id="mSrcDbSearch" placeholder="Search source DB…" autocomplete="off"
-              oninput="filterSearchableSelect('mSrcDb', this.value)"
-              onfocus="openSearchableSelect('mSrcDb')"
-              onblur="commitSearchableSelect('mSrcDb')" />
-            <input type="hidden" id="mSrcDbVal" />
+        <!-- ① Source -->
+        <div class="mform-section">
+          <div class="mform-section-label">① Source — ต้นทาง</div>
+          <div class="form-grid" style="margin-top:10px">
+
+            <div class="form-field">
+              <label class="form-label">Database ต้นทาง <span class="req">*</span></label>
+              <div class="form-hint">ระบบฐานข้อมูลที่เป็นต้นทาง</div>
+              <div class="searchable-select-wrap" data-ss="mSrcDb">
+                <input type="text" class="form-input" id="mSrcDbSearch" placeholder="เลือก เช่น MySQL, Oracle…" autocomplete="off"
+                  oninput="filterSearchableSelect('mSrcDb', this.value)"
+                  onfocus="openSearchableSelect('mSrcDb')"
+                  onblur="commitSearchableSelect('mSrcDb')" />
+                <input type="hidden" id="mSrcDbVal" />
+              </div>
+              <div class="form-error hidden" id="mSrcDbErr">Source DB is required</div>
+            </div>
+
+            <div class="form-field">
+              <label class="form-label">Source Type <span class="req">*</span></label>
+              <div class="form-hint">ชื่อ type ในระบบต้นทาง เช่น <code>INT64</code>, <code>STRING</code></div>
+              <input type="text" class="form-input" id="mSourceType" placeholder="เช่น int, long, string…"
+                oninput="validateMappingField('mSourceType')" />
+              <div class="form-error hidden" id="mSourceTypeErr">Source Type is required</div>
+            </div>
+
           </div>
-          <div class="form-error hidden" id="mSrcDbErr">Source DB is required</div>
         </div>
 
-        <div class="form-field">
-          <label class="form-label">Source Type <span style="color:var(--danger,#ef4444)">*</span></label>
-          <input type="text" class="form-input" id="mSourceType" placeholder="e.g. int, long, string…"
-            oninput="validateMappingField('mSourceType')" />
-          <div class="form-error hidden" id="mSourceTypeErr">Source Type is required</div>
-        </div>
+        <!-- ② Mapping Layer -->
+        <div class="mform-section">
+          <div class="mform-section-label">② Mapping Layer — การแปลงชนิดข้อมูล</div>
+          <div class="form-grid" style="margin-top:10px">
 
-        <!-- Row 2: Raw Type + Logical Type -->
-        <div class="form-field">
-          <label class="form-label">Raw Type <span style="color:var(--danger,#ef4444)">*</span></label>
-          <input type="text" class="form-input" id="mRawType" placeholder="e.g. varchar, jsonb…"
-            oninput="validateMappingField('mRawType')" />
-          <div class="form-error hidden" id="mRawTypeErr">Raw Type is required</div>
-        </div>
+            <div class="form-field">
+              <label class="form-label">Raw Type <span class="req">*</span></label>
+              <div class="form-hint">ชนิดข้อมูลดิบที่ Source DB ใช้จริง เช่น <code>VARCHAR</code>, <code>JSONB</code></div>
+              <input type="text" class="form-input" id="mRawType" placeholder="เช่น varchar, jsonb…"
+                oninput="validateMappingField('mRawType')" />
+              <div class="form-error hidden" id="mRawTypeErr">Raw Type is required</div>
+            </div>
 
-        <div class="form-field">
-          <label class="form-label">Logical Type <span style="color:var(--danger,#ef4444)">*</span></label>
-          <input type="text" class="form-input" id="mLogicalType" placeholder="e.g. uuid, decimal…"
-            oninput="validateMappingField('mLogicalType')" />
-          <div class="form-error hidden" id="mLogicalTypeErr">Logical Type is required</div>
-        </div>
+            <div class="form-field">
+              <label class="form-label">Logical Type <span class="req">*</span></label>
+              <div class="form-hint">ชนิดข้อมูลเชิงความหมาย เช่น <code>UUID</code>, <code>DECIMAL</code></div>
+              <input type="text" class="form-input" id="mLogicalType" placeholder="เช่น uuid, decimal…"
+                oninput="validateMappingField('mLogicalType')" />
+              <div class="form-error hidden" id="mLogicalTypeErr">Logical Type is required</div>
+            </div>
 
-        <!-- Row 3: Master Type + Dest DB -->
-        <div class="form-field">
-          <label class="form-label">Master Type <span style="color:var(--danger,#ef4444)">*</span></label>
-          <div class="searchable-select-wrap" data-ss="mMasterType">
-            <input type="text" class="form-input" id="mMasterTypeSearch" placeholder="Search standard type…" autocomplete="off"
-              oninput="filterSearchableSelect('mMasterType', this.value)"
-              onfocus="openSearchableSelect('mMasterType')"
-              onblur="commitSearchableSelect('mMasterType')" />
-            <input type="hidden" id="mMasterTypeVal" />
+            <div class="form-field full">
+              <label class="form-label">Master Type (Standard) <span class="req">*</span></label>
+              <div class="form-hint">ชนิดมาตรฐานกลางที่ใช้เชื่อม Source → Destination</div>
+              <div class="searchable-select-wrap" data-ss="mMasterType">
+                <input type="text" class="form-input" id="mMasterTypeSearch" placeholder="ค้นหา standard type…" autocomplete="off"
+                  oninput="filterSearchableSelect('mMasterType', this.value)"
+                  onfocus="openSearchableSelect('mMasterType')"
+                  onblur="commitSearchableSelect('mMasterType')" />
+                <input type="hidden" id="mMasterTypeVal" />
+              </div>
+              <div class="form-error hidden" id="mMasterTypeErr">Master Type is required</div>
+            </div>
+
           </div>
-          <div class="form-error hidden" id="mMasterTypeErr">Master Type is required</div>
         </div>
 
-        <div class="form-field">
-          <label class="form-label">Destination DB <span style="color:var(--danger,#ef4444)">*</span></label>
-          <div class="searchable-select-wrap" data-ss="mDestDb">
-            <input type="text" class="form-input" id="mDestDbSearch" placeholder="Search destination DB…" autocomplete="off"
-              oninput="filterSearchableSelect('mDestDb', this.value)"
-              onfocus="openSearchableSelect('mDestDb')"
-              onblur="commitSearchableSelect('mDestDb')" />
-            <input type="hidden" id="mDestDbVal" />
+        <!-- ③ Destination -->
+        <div class="mform-section">
+          <div class="mform-section-label">③ Destination — ปลายทาง</div>
+          <div class="form-grid" style="margin-top:10px">
+
+            <div class="form-field">
+              <label class="form-label">Database ปลายทาง <span class="req">*</span></label>
+              <div class="form-hint">ระบบฐานข้อมูลที่รับข้อมูล</div>
+              <div class="searchable-select-wrap" data-ss="mDestDb">
+                <input type="text" class="form-input" id="mDestDbSearch" placeholder="เลือก เช่น PostgreSQL…" autocomplete="off"
+                  oninput="filterSearchableSelect('mDestDb', this.value)"
+                  onfocus="openSearchableSelect('mDestDb')"
+                  onblur="commitSearchableSelect('mDestDb')" />
+                <input type="hidden" id="mDestDbVal" />
+              </div>
+              <div class="form-error hidden" id="mDestDbErr">Destination DB is required</div>
+            </div>
+
+            <div class="form-field">
+              <label class="form-label">Final Type <span class="req">*</span></label>
+              <div class="form-hint">ชนิดข้อมูลที่ใช้จริงใน Destination เช่น <code>VARCHAR(36)</code></div>
+              <input type="text" class="form-input" id="mFinalType" placeholder="เช่น VARCHAR(36)…"
+                oninput="validateMappingField('mFinalType')" />
+              <div class="form-error hidden" id="mFinalTypeErr">Final Type is required</div>
+            </div>
+
           </div>
-          <div class="form-error hidden" id="mDestDbErr">Destination DB is required</div>
         </div>
 
-        <!-- Row 4: Final Type + Confidence -->
-        <div class="form-field">
-          <label class="form-label">Final Type <span style="color:var(--danger,#ef4444)">*</span></label>
-          <input type="text" class="form-input" id="mFinalType" placeholder="e.g. VARCHAR(36)…"
-            oninput="validateMappingField('mFinalType')" />
-          <div class="form-error hidden" id="mFinalTypeErr">Final Type is required</div>
+        <!-- ④ Status -->
+        <div class="mform-section">
+          <div class="mform-section-label">④ สถานะ</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+            <button type="button" class="status-pill" data-val="active"      onclick="selectStatusPill(this)">✓ Active</button>
+            <button type="button" class="status-pill" data-val="pending"     onclick="selectStatusPill(this)">⏳ Pending</button>
+            <button type="button" class="status-pill" data-val="draft"       onclick="selectStatusPill(this)">✏ Draft</button>
+            <button type="button" class="status-pill" data-val="deprecated"  onclick="selectStatusPill(this)">✕ Deprecated</button>
+          </div>
+          <input type="hidden" id="mStatus" value="pending" />
         </div>
 
-        <div class="form-field">
-          <label class="form-label">Confidence</label>
-          <input type="number" class="form-input" id="mConfidence" value="100" min="0" max="100"
-            style="font-family:var(--mono)" />
-        </div>
+        <!-- Advanced -->
+        <details class="mform-advanced">
+          <summary>⚙ Advanced</summary>
+          <div class="form-field" style="margin-top:12px;max-width:160px">
+            <label class="form-label">Confidence (%)</label>
+            <input type="number" class="form-input" id="mConfidence" value="100" min="0" max="100"
+              style="font-family:var(--mono)" />
+          </div>
+        </details>
 
-        <!-- Row 5: Status (full width) -->
-        <div class="form-field full">
-          <label class="form-label">Status</label>
-          <select class="form-select" id="mStatus">
-            <option value="pending">pending</option>
-            <option value="active">active</option>
-            <option value="draft">draft</option>
-            <option value="deprecated">deprecated</option>
-          </select>
-        </div>
-
-      </div>
-    </div>
+          </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeModal('mappingModal')">Cancel</button>
       <button class="btn btn-primary" id="mSaveBtn" onclick="saveMapping()">Save Rule</button>

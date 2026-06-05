@@ -156,7 +156,8 @@ async def _process_row(rule_id: int, rule_data: dict) -> dict:
                     DO UPDATE SET
                         source_type  = EXCLUDED.source_type,
                         logical_type = EXCLUDED.logical_type,
-                        standard_id  = EXCLUDED.standard_id
+                        standard_id  = EXCLUDED.standard_id,
+                        updated_at   = NOW()
                 """),
                 {
                     "db_id":        src_db_rec.id,
@@ -177,7 +178,8 @@ async def _process_row(rule_id: int, rule_data: dict) -> dict:
                             (:db_id, :standard_id, :final_type)
                         ON CONFLICT (db_id, standard_id)
                         DO UPDATE SET
-                            final_type = EXCLUDED.final_type
+                            final_type = EXCLUDED.final_type,
+                            updated_at = NOW()
                     """),
                     {
                         "db_id":       dest_db_rec.id,
@@ -197,7 +199,7 @@ async def _process_row(rule_id: int, rule_data: dict) -> dict:
 
         except Exception as exc:
             await session.rollback()
-            err_detail = str(exc)[:200]
+            err_detail = str(exc)[:490]
             logger.error("[sync] ERROR rule_id=%s: %s\n%s", rule_id, exc, traceback.format_exc())
             return {"status": "error", "error_message": f"DATABASE_ERROR: {err_detail}", "synced_at": None}
 

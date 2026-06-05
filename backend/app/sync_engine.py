@@ -68,15 +68,35 @@ async def _get_max_retries() -> int:
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _lookup_db(session: AsyncSession, key: str) -> Optional[DatabaseRecord]:
+    """Case-insensitive lookup — ลอง exact lower ก่อน ถ้าไม่เจอลอง name"""
+    key_lower = key.strip().lower()
+    # 1. match key (case-insensitive)
     result = await session.execute(
-        select(DatabaseRecord).where(func.lower(DatabaseRecord.key) == key.strip().lower())
+        select(DatabaseRecord).where(func.lower(DatabaseRecord.key) == key_lower)
+    )
+    rec = result.scalar_one_or_none()
+    if rec:
+        return rec
+    # 2. fallback: match name (case-insensitive)
+    result = await session.execute(
+        select(DatabaseRecord).where(func.lower(DatabaseRecord.name) == key_lower)
     )
     return result.scalar_one_or_none()
 
 
 async def _lookup_master_type(session: AsyncSession, standard_type: str) -> Optional[DatatypeStandard]:
+    """Case-insensitive lookup สำหรับ master_type"""
+    val = standard_type.strip()
+    # 1. exact match
     result = await session.execute(
-        select(DatatypeStandard).where(DatatypeStandard.standard_type == standard_type.strip())
+        select(DatatypeStandard).where(DatatypeStandard.standard_type == val)
+    )
+    rec = result.scalar_one_or_none()
+    if rec:
+        return rec
+    # 2. case-insensitive fallback
+    result = await session.execute(
+        select(DatatypeStandard).where(func.lower(DatatypeStandard.standard_type) == val.lower())
     )
     return result.scalar_one_or_none()
 
@@ -97,20 +117,32 @@ async def _process_row(rule_id: int, rule_data: dict) -> dict:
             # 1. validate src_db
             src_db_rec = await _lookup_db(session, rule_data["src_db"])
             if not src_db_rec:
-                return {"status": "error", "error_message": "SOURCE_DB_NOT_FOUND", "synced_at": None}
+                return {
+                    "status": "error",
+                    "error_message": f"SOURCE_DB_NOT_FOUND: '{rule_data['src_db']}' ไม่มีใน databases table",
+                    "synced_at": None,
+                }
 
             # 2. validate dest_db
             dest_db_rec = await _lookup_db(session, rule_data["dest_db"])
             if not dest_db_rec:
-                return {"status": "error", "error_message": "DEST_DB_NOT_FOUND", "synced_at": None}
+                return {
+                    "status": "error",
+                    "error_message": f"DEST_DB_NOT_FOUND: '{rule_data['dest_db']}' ไม่มีใน databases table",
+                    "synced_at": None,
+                }
 
-            # 3. validate master_type (optional)
+            # 3. validate master_type — ถ้าว่างให้ข้ามไป (optional)
             standard_id = None
-            master_type = rule_data.get("master_type", "")
-            if master_type and master_type.strip():
+            master_type = (rule_data.get("master_type") or "").strip()
+            if master_type:
                 master_rec = await _lookup_master_type(session, master_type)
                 if not master_rec:
-                    return {"status": "error", "error_message": "MASTER_TYPE_NOT_FOUND", "synced_at": None}
+                    return {
+                        "status": "error",
+                        "error_message": f"MASTER_TYPE_NOT_FOUND: '{master_type}' ไม่มีใน datatype_standard table",
+                        "synced_at": None,
+                    }
                 standard_id = master_rec.id
 
             # 4. upsert datatype_raw_mapping
@@ -165,8 +197,9 @@ async def _process_row(rule_id: int, rule_data: dict) -> dict:
 
         except Exception as exc:
             await session.rollback()
+            err_detail = str(exc)[:200]
             logger.error("[sync] ERROR rule_id=%s: %s\n%s", rule_id, exc, traceback.format_exc())
-            return {"status": "error", "error_message": "DATABASE_ERROR", "synced_at": None}
+            return {"status": "error", "error_message": f"DATABASE_ERROR: {err_detail}", "synced_at": None}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

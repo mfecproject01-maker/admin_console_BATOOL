@@ -28,6 +28,7 @@ _ALWAYS_PASS_PREFIXES = (
     "/api/auth/",
     "/api/health",
     "/api/system/maintenance",
+    "/ws/",           # WebSocket endpoints ต้อง pass เสมอ
     "/docs",
     "/redoc",
     "/openapi.json",

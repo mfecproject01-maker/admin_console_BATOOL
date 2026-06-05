@@ -55,7 +55,7 @@ async def init_db():
         # mapping_rules — sync/audit fields (migration 001)
         await conn.execute(text(
             "ALTER TABLE mapping_rules "
-            "ADD COLUMN IF NOT EXISTS error_message VARCHAR(256) DEFAULT NULL"
+            "ADD COLUMN IF NOT EXISTS error_message VARCHAR(512) DEFAULT NULL"
         ))
         await conn.execute(text(
             "ALTER TABLE mapping_rules "

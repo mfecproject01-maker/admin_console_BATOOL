@@ -1683,6 +1683,72 @@ function clearLogs() {
     .catch(e => showToast('ล้าง log ไม่สำเร็จ: ' + e.message, 'error'));
 }
 
+// ── Wake BA Tool API ──────────────────────────────────────────────────────────
+
+const BA_TOOL_URL = 'https://ba-tool-yvb0.onrender.com';
+const WAKE_TIMEOUT_MS = 60_000; // Render cold start can take up to 60s
+
+async function wakeBAToolApi() {
+  const btn  = document.getElementById('wakeApiBtn');
+  const icon = document.getElementById('wakeApiIcon');
+  const terminal = document.getElementById('logTerminal');
+
+  if (btn.disabled) return;
+
+  // ── UI: loading state ──
+  btn.disabled = true;
+  btn.style.opacity = '0.7';
+  if (icon) icon.textContent = '⏳';
+
+  const startTime = Date.now();
+  _appendWakeLog(terminal, 'INFO', `กำลัง ping BA Tool API: ${BA_TOOL_URL} …`);
+
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), WAKE_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${BA_TOOL_URL}/health`, {
+      method: 'GET',
+      signal: controller.signal,
+      cache:  'no-store',
+    });
+    clearTimeout(timeoutId);
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    if (res.ok) {
+      _appendWakeLog(terminal, 'INFO',  `✅ BA Tool API ตื่นแล้ว (${elapsed}s) — status ${res.status}`);
+      showToast(`BA Tool API พร้อมใช้งาน (${elapsed}s)`, 'success');
+      if (icon) icon.textContent = '✅';
+      setTimeout(() => { if (icon) icon.textContent = '⚡'; }, 3000);
+    } else {
+      _appendWakeLog(terminal, 'WARN', `⚠ BA Tool API ตอบ HTTP ${res.status} (${elapsed}s)`);
+      showToast(`BA Tool API ตอบ ${res.status}`, 'warn');
+      if (icon) icon.textContent = '⚠';
+      setTimeout(() => { if (icon) icon.textContent = '⚡'; }, 3000);
+    }
+  } catch (err) {
+    clearTimeout(timeoutId);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    const msg = controller.signal.aborted
+      ? `หมดเวลา ${WAKE_TIMEOUT_MS / 1000}s — BA Tool อาจยังกำลัง boot`
+      : err.message;
+    _appendWakeLog(terminal, 'ERROR', `❌ Wake ล้มเหลว (${elapsed}s): ${msg}`);
+    showToast('Wake ล้มเหลว: ' + msg, 'error');
+    if (icon) icon.textContent = '⚡';
+  } finally {
+    btn.disabled = false;
+    btn.style.opacity = '';
+  }
+}
+
+function _appendWakeLog(terminal, level, message) {
+  if (!terminal) return;
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  appendLogLine(terminal, now, level, message, null);
+  if (logAutoScroll) terminal.scrollTop = terminal.scrollHeight;
+}
+
 function toggleAutoScroll() {
   logAutoScroll = !logAutoScroll;
   const btn = document.getElementById('autoScrollBtn');

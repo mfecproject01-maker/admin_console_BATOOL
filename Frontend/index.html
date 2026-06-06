@@ -1022,6 +1022,10 @@
           <div style="margin-left:auto;display:flex;gap:8px">
             <button class="btn btn-ghost btn-sm" id="autoScrollBtn" onclick="toggleAutoScroll()">↓ Auto-scroll</button>
             <button class="btn btn-ghost btn-sm" onclick="clearLogs()">⊘ Clear</button>
+            <button class="btn btn-sm" id="wakeApiBtn" onclick="wakeBAToolApi()"
+              style="background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);gap:6px;display:flex;align-items:center">
+              <span id="wakeApiIcon">⚡</span> Wake BA Tool API
+            </button>
           </div>
         </div>
         <div class="log-terminal" id="logTerminal" style="min-height:400px"></div>

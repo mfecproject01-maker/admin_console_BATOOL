@@ -25,22 +25,33 @@ const API_URL = (
 // ════════════════════════════════════════════════════════════
 
 // ════════════════════════════════════════════════════════════
-//  API + TOKEN REFRESH (cookie-based — no JS token storage)
+//  API + TOKEN REFRESH
 // ════════════════════════════════════════════════════════════
 
-// _getToken / _saveToken kept as no-ops for any legacy call sites,
-// but the actual auth is now handled by HttpOnly cookie via credentials:'include'.
-function _getToken()           { return null; }
-function _saveToken()          { /* no-op — token lives in HttpOnly cookie */ }
+function _getToken() {
+  return sessionStorage.getItem('ba_token') || localStorage.getItem('ba_token');
+}
+
+function _saveToken(token, remember) {
+  if (remember) localStorage.setItem('ba_token', token);
+  else          sessionStorage.setItem('ba_token', token);
+}
 
 async function _refreshToken() {
+  const token = _getToken();
+  if (!token) return false;
   try {
     const res = await fetch(API_URL + '/api/auth/refresh', {
       method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
     });
-    return res.ok;
+    if (!res.ok) return false;
+    const data = await res.json();
+    const newToken = data?.data?.access_token;
+    if (!newToken) return false;
+    const inLocal = !!localStorage.getItem('ba_token');
+    _saveToken(newToken, inLocal);
+    return true;
   } catch {
     return false;
   }
@@ -55,13 +66,14 @@ function _formatApiError(detail, fallback) {
 }
 
 async function apiCall(path, options = {}) {
+  const token = _getToken();
   let res;
   try {
     res = await fetch(API_URL + path, {
       ...options,
-      credentials: 'include',          // send HttpOnly auth cookie automatically
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         ...(options.headers || {}),
       },
     });
@@ -80,11 +92,9 @@ async function apiCall(path, options = {}) {
 
   if (res.status === 401) {
     const refreshed = await _refreshToken();
-    if (refreshed) {
-      return apiCall(path, options);
-    }
-    // Clear any legacy storage and trigger logout
-    ['ba_token','ba_session'].forEach(k => { localStorage.removeItem(k); sessionStorage.removeItem(k); });
+    if (refreshed) return apiCall(path, options);
+    sessionStorage.removeItem('ba_token');
+    localStorage.removeItem('ba_token');
     if (typeof doLogout === 'function') doLogout();
     throw new Error('Session expired');
   }
@@ -94,7 +104,7 @@ async function apiCall(path, options = {}) {
 }
 
 const TOKEN_REFRESH_INTERVAL = 55 * 60 * 1000;
-setInterval(async () => { await _refreshToken(); }, TOKEN_REFRESH_INTERVAL);
+setInterval(async () => { if (_getToken()) await _refreshToken(); }, TOKEN_REFRESH_INTERVAL);
 
 
 // ════════════════════════════════════════════════════════════
@@ -1463,15 +1473,14 @@ const PRESENCE_RECONNECT_DELAY  = 5_000;
 
 async function connectPresence() {
   if (presenceWs && presenceWs.readyState < 2) return;
+  const token = _getToken();
+  if (!token) return;
 
-  // Obtain a short-lived WS ticket via REST (cookie is sent automatically).
-  // Falls back to direct cookie-auth if the ticket endpoint doesn't exist yet.
   let wsUrl;
   try {
     const ticketRes = await fetch(API_URL + '/api/auth/ws-ticket', {
       method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
     });
     if (ticketRes.ok) {
       const ticketData = await ticketRes.json();
@@ -1482,14 +1491,13 @@ async function connectPresence() {
         wsUrl = `${proto}://${host}/ws/presence/admin?ticket=${encodeURIComponent(ticket)}`;
       }
     }
-  } catch { /* ticket endpoint not available — use cookie fallback */ }
+  } catch { /* fallback */ }
 
   if (!wsUrl) {
-    // Cookie-based WS: browsers send cookies for same-origin WebSocket upgrades.
-    // For cross-origin, this requires the server to set SameSite=None;Secure.
+    // Legacy fallback: pass token directly (deprecated)
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const host  = new URL(API_URL).host;
-    wsUrl = `${proto}://${host}/ws/presence/admin`;
+    wsUrl = `${proto}://${host}/ws/presence/admin?token=${encodeURIComponent(token)}`;
   }
 
   presenceWs = new WebSocket(wsUrl);

@@ -3,7 +3,7 @@ from typing import Optional
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 
 from app.core.config import settings
@@ -11,7 +11,8 @@ from app.core.config import settings
 ALGORITHM = "HS256"
 
 pwd_context   = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+# Keep OAuth2PasswordBearer for backward-compatible Bearer token fallback
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -31,7 +32,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+def _decode_token(token: str) -> dict:
+    """Decode and validate a JWT token, raising HTTPException on failure."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -42,7 +44,30 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
         username: str = payload.get("sub")
         if not username:
             raise credentials_exception
-        # คืน dict ที่มี "username" key — consistent กับทุก router
         return {"username": username}
     except JWTError:
         raise credentials_exception
+
+
+async def get_current_user(
+    request: Request,
+    bearer_token: Optional[str] = Depends(oauth2_scheme),
+) -> dict:
+    """
+    Authenticate via HttpOnly cookie first, then fall back to Authorization header.
+    This supports both the hardened cookie-based frontend and legacy Bearer token clients.
+    """
+    # 1. Prefer HttpOnly cookie (secure, not accessible to JS)
+    cookie_token = request.cookies.get("ba_access_token")
+    if cookie_token:
+        return _decode_token(cookie_token)
+
+    # 2. Fall back to Authorization: Bearer header (API clients / legacy)
+    if bearer_token:
+        return _decode_token(bearer_token)
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )

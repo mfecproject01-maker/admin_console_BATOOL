@@ -30,7 +30,7 @@ services:
         sync: false
 
       - key: ALLOWED_ORIGINS
-        value: http://localhost,http://localhost:3000,http://localhost:5173,http://localhost:5500,http://localhost:5501,http://127.0.0.1,http://127.0.0.1:5500,http://127.0.0.1:5501,null,https://ba-tool-for-multiple-db.vercel.app,https://admin-console-for-batool-91pz.vercel.app
+        sync: false  # Set to your production frontend URL(s), e.g.: https://your-app.vercel.app
 
       - key: ALLOWED_ORIGIN_REGEX
-        value: https://admin-console-for-batool(-[a-z0-9]+)?\.vercel\.app
+        sync: false  # Optional: regex for Vercel preview URLs, e.g.: https://your-app(-[a-z0-9]+)?\.vercel\.app

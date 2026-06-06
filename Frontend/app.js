@@ -1,43 +1,46 @@
-function getDefaultApiUrl() {
-  return 'https://admin-console-batool.onrender.com';
+// ════════════════════════════════════════════════════════════
+//  XSS PROTECTION — HTML escape utility
+//  Use escapeHtml() for ALL user-controlled data rendered in innerHTML
+// ════════════════════════════════════════════════════════════
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
-const DEFAULT_API_URL = getDefaultApiUrl();
+// API URL: configured via window.BA_API_URL (set in index.html env block),
+// never falls back to a hardcoded production URL in this file.
 const API_URL = (
   window.BA_API_URL ||
   window.API_URL ||
   localStorage.getItem('ba_api_url') ||
-  DEFAULT_API_URL
+  ''
 ).replace(/\/$/, '');
 
 // ════════════════════════════════════════════════════════════
 //  API + TOKEN REFRESH
 // ════════════════════════════════════════════════════════════
 
-function _getToken() {
-  return localStorage.getItem('ba_token') || sessionStorage.getItem('ba_token');
-}
+// ════════════════════════════════════════════════════════════
+//  API + TOKEN REFRESH (cookie-based — no JS token storage)
+// ════════════════════════════════════════════════════════════
 
-function _saveToken(token, remember) {
-  if (remember) localStorage.setItem('ba_token', token);
-  else          sessionStorage.setItem('ba_token', token);
-}
+// _getToken / _saveToken kept as no-ops for any legacy call sites,
+// but the actual auth is now handled by HttpOnly cookie via credentials:'include'.
+function _getToken()           { return null; }
+function _saveToken()          { /* no-op — token lives in HttpOnly cookie */ }
 
 async function _refreshToken() {
-  const token = _getToken();
-  if (!token) return false;
   try {
     const res = await fetch(API_URL + '/api/auth/refresh', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
     });
-    if (!res.ok) return false;
-    const data = await res.json();
-    const newToken = data?.data?.access_token;
-    if (!newToken) return false;
-    const inLocal = !!localStorage.getItem('ba_token');
-    _saveToken(newToken, inLocal);
-    return true;
+    return res.ok;
   } catch {
     return false;
   }
@@ -52,14 +55,13 @@ function _formatApiError(detail, fallback) {
 }
 
 async function apiCall(path, options = {}) {
-  const token = _getToken();
   let res;
   try {
     res = await fetch(API_URL + path, {
       ...options,
+      credentials: 'include',          // send HttpOnly auth cookie automatically
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(options.headers || {}),
       },
     });
@@ -81,10 +83,8 @@ async function apiCall(path, options = {}) {
     if (refreshed) {
       return apiCall(path, options);
     }
-    localStorage.removeItem('ba_token');
-    localStorage.removeItem('ba_session');
-    sessionStorage.removeItem('ba_token');
-    sessionStorage.removeItem('ba_session');
+    // Clear any legacy storage and trigger logout
+    ['ba_token','ba_session'].forEach(k => { localStorage.removeItem(k); sessionStorage.removeItem(k); });
     if (typeof doLogout === 'function') doLogout();
     throw new Error('Session expired');
   }
@@ -94,9 +94,7 @@ async function apiCall(path, options = {}) {
 }
 
 const TOKEN_REFRESH_INTERVAL = 55 * 60 * 1000;
-setInterval(async () => {
-  if (_getToken()) await _refreshToken();
-}, TOKEN_REFRESH_INTERVAL);
+setInterval(async () => { await _refreshToken(); }, TOKEN_REFRESH_INTERVAL);
 
 
 // ════════════════════════════════════════════════════════════
@@ -230,7 +228,7 @@ function showToast(message, type = 'info') {
   const icons = { success:'✓', error:'✕', warn:'⚠', info:'ℹ' };
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
-  toast.innerHTML = `<span class="toast-icon">${icons[type]||icons.info}</span><span class="toast-msg">${message}</span>`;
+  toast.innerHTML = `<span class="toast-icon">${icons[type]||icons.info}</span><span class="toast-msg">${escapeHtml(message)}</span>`;
   toastContainer.appendChild(toast);
   setTimeout(() => { toast.classList.add('out'); setTimeout(() => toast.remove(), 220); }, 3000);
 }
@@ -347,10 +345,10 @@ async function refreshDashboard() {
       coverageList.classList.add('circle-view');
       coverageList.innerHTML = coverage.map(c => {
         const ringClass = c.pct >= 80 ? 'high' : c.pct >= 40 ? 'mid' : 'low';
-        return `<div class="db-cov-circle-item"><div class="db-cov-ring ${ringClass}" style="--pct:${c.pct}"><span>${c.pct}%</span></div><div class="db-cov-dbname">${c.name}</div></div>`;
+        return `<div class="db-cov-circle-item"><div class="db-cov-ring ${ringClass}" style="--pct:${c.pct}"><span>${escapeHtml(c.pct)}%</span></div><div class="db-cov-dbname">${escapeHtml(c.name)}</div></div>`;
       }).join('');
       if (coverageLegend) {
-        coverageLegend.innerHTML = coverage.map(c => `<div class="db-legend-row"><span class="db-legend-dot"></span><span class="db-legend-name">${c.name}</span><span class="db-legend-pct">${c.pct}%</span></div>`).join('');
+        coverageLegend.innerHTML = coverage.map(c => `<div class="db-legend-row"><span class="db-legend-dot"></span><span class="db-legend-name">${escapeHtml(c.name)}</span><span class="db-legend-pct">${escapeHtml(c.pct)}%</span></div>`).join('');
       }
     } else {
       if (coverageList) {
@@ -366,7 +364,7 @@ async function refreshDashboard() {
       activityFeed.innerHTML = recent.map(l => {
         const level    = (l.level || 'INFO').toUpperCase();
         const dotClass = level === 'WARNING' ? 'warn' : level === 'ERROR' ? 'error' : 'success';
-        return `<div class="activity-item"><div class="activity-dot ${dotClass}"></div><div class="activity-body"><div class="activity-msg">${l.message}</div><div class="activity-time">${formatLocalDateTime(l.timestamp)}</div></div></div>`;
+        return `<div class="activity-item"><div class="activity-dot ${dotClass}"></div><div class="activity-body"><div class="activity-msg">${escapeHtml(l.message)}</div><div class="activity-time">${formatLocalDateTime(l.timestamp)}</div></div></div>`;
       }).join('');
     }
 
@@ -448,15 +446,15 @@ function renderMappingTable() {
     tbody.innerHTML = page.map(m => `
       <tr>
         <td class="th-check"><input type="checkbox" ${selectedMappings.has(m.id)?'checked':''} onchange="toggleSelect(${m.id},this.checked)" /></td>
-        <td class="td-name">${m.srcDb}</td>
-        <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${m.sourceType}</td>
-        <td>${m.rawType}</td>
-        <td>${m.logicalType}</td>
-        <td>${m.masterType}</td>
-        <td>${m.destDb}</td>
-        <td>${m.finalType}</td>
-        <td><div class="confidence-bar"><div class="conf-track"><div class="conf-fill" style="width:${m.confidence}%"></div></div><span class="conf-txt">${m.confidence}%</span></div></td>
-        <td><span class="badge badge-${m.status}">${m.status}</span></td>
+        <td class="td-name">${escapeHtml(m.srcDb)}</td>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${escapeHtml(m.sourceType)}</td>
+        <td>${escapeHtml(m.rawType)}</td>
+        <td>${escapeHtml(m.logicalType)}</td>
+        <td>${escapeHtml(m.masterType)}</td>
+        <td>${escapeHtml(m.destDb)}</td>
+        <td>${escapeHtml(m.finalType)}</td>
+        <td><div class="confidence-bar"><div class="conf-track"><div class="conf-fill" style="width:${m.confidence}%"></div></div><span class="conf-txt">${escapeHtml(m.confidence)}%</span></div></td>
+        <td><span class="badge badge-${escapeHtml(m.status)}">${escapeHtml(m.status)}</span></td>
         <td>${formatActivityDate(m.updated)}</td>
         <td>${(_currentRole === 'admin' || _currentRole === 'editor') ? `<div class="row-actions"><button class="row-btn" title="Edit" onclick="editMapping(${m.id})">✎</button>${_currentRole === 'admin' ? `<button class="row-btn danger" title="Delete" onclick="deleteMapping(${m.id})">✕</button>` : ''}</div>` : ''}</td>
       </tr>`).join('');
@@ -1074,19 +1072,19 @@ function _importShowPreview(rows, filename) {
   document.getElementById('importStep2').classList.remove('hidden');
 
   const metaEl = document.getElementById('importPreviewMeta');
-  metaEl.innerHTML = `<strong>${filename}</strong> — ${rows.length} row(s)` +
+  metaEl.innerHTML = `<strong>${escapeHtml(filename)}</strong> — ${rows.length} row(s)` +
     (_importHasErrors ? ` <span style="color:#ef4444">⚠ ${errors.length} error(s)</span>` : ' <span style="color:#22c55e">✓ Valid</span>');
 
   const cols    = IMPORT_ALL_COLS.filter(c => rows.some(r => r[c]));
   const headEl  = document.getElementById('importPreviewHead');
   const bodyEl  = document.getElementById('importPreviewBody');
 
-  headEl.innerHTML = '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
+  headEl.innerHTML = '<tr>' + cols.map(c => `<th>${escapeHtml(c)}</th>`).join('') + '</tr>';
 
   const displayRows = rows.slice(0, 50);
   bodyEl.innerHTML = displayRows.map((row, i) =>
     `<tr class="${errorRows.has(i) ? 'row-error' : ''}">` +
-    cols.map(c => `<td title="${(row[c]||'').replace(/"/g,'&quot;')}">${row[c] || '<span style="color:var(--text3)">—</span>'}</td>`).join('') +
+    cols.map(c => `<td title="${escapeHtml(row[c]||'')}">${row[c] ? escapeHtml(row[c]) : '<span style="color:var(--text3)">—</span>'}</td>`).join('') +
     '</tr>'
   ).join('');
 
@@ -1097,7 +1095,7 @@ function _importShowPreview(rows, filename) {
   const errEl = document.getElementById('importValidationErrors');
   if (errors.length > 0) {
     errEl.classList.remove('hidden');
-    errEl.innerHTML = '<ul>' + errors.slice(0, 10).map(e => `<li>${e}</li>`).join('') +
+    errEl.innerHTML = '<ul>' + errors.slice(0, 10).map(e => `<li>${escapeHtml(e)}</li>`).join('') +
       (errors.length > 10 ? `<li>…and ${errors.length - 10} more</li>` : '') + '</ul>';
   } else {
     errEl.classList.add('hidden');
@@ -1263,7 +1261,7 @@ function renderDatabases() {
       <div class="db-card-header">
         <div class="db-card-info">
           <div class="db-logo">${icon}</div>
-          <div><div class="db-card-name">${db.name}</div><div class="db-card-key">${db.key}${db.version?' · '+db.version:''}</div></div>
+          <div><div class="db-card-name">${escapeHtml(db.name)}</div><div class="db-card-key">${escapeHtml(db.key)}${db.version?' · '+escapeHtml(db.version):''}</div></div>
         </div>
         <label class="toggle-switch"><input type="checkbox" ${db.enabled?'checked':''} onchange="toggleDatabase(${db.id},this.checked)" /><span class="toggle-track"></span></label>
       </div>
@@ -1288,10 +1286,10 @@ function renderDatabaseError(error) {
   grid.innerHTML = `
     <div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text3);border:1px dashed var(--border2);border-radius:var(--radius);">
       <div style="font-weight:600;color:var(--text);margin-bottom:8px">Unable to load databases</div>
-      <div style="margin-bottom:16px">${detail}</div>
+      <div style="margin-bottom:16px">${escapeHtml(detail)}</div>
       <div style="font-family:var(--mono);font-size:11px;line-height:1.6;margin-bottom:16px;color:var(--text3)">
-        API: ${API_URL}<br />
-        Page: ${pageOrigin}
+        API: ${escapeHtml(API_URL)}<br />
+        Page: ${escapeHtml(pageOrigin)}
       </div>
       <button class="btn btn-primary" onclick="fetchDatabases()">Retry</button>
     </div>`;
@@ -1463,15 +1461,38 @@ let presencePingTimer = null;
 const PRESENCE_PING_INTERVAL    = 25_000;
 const PRESENCE_RECONNECT_DELAY  = 5_000;
 
-function connectPresence() {
+async function connectPresence() {
   if (presenceWs && presenceWs.readyState < 2) return;
-  const token = _getToken();
-  if (!token) return;
 
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  const host  = new URL(API_URL).host;
-  const url   = `${proto}://${host}/ws/presence/admin?token=${encodeURIComponent(token)}`;
-  presenceWs  = new WebSocket(url);
+  // Obtain a short-lived WS ticket via REST (cookie is sent automatically).
+  // Falls back to direct cookie-auth if the ticket endpoint doesn't exist yet.
+  let wsUrl;
+  try {
+    const ticketRes = await fetch(API_URL + '/api/auth/ws-ticket', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (ticketRes.ok) {
+      const ticketData = await ticketRes.json();
+      const ticket = ticketData?.data?.ticket;
+      if (ticket) {
+        const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        const host  = new URL(API_URL).host;
+        wsUrl = `${proto}://${host}/ws/presence/admin?ticket=${encodeURIComponent(ticket)}`;
+      }
+    }
+  } catch { /* ticket endpoint not available — use cookie fallback */ }
+
+  if (!wsUrl) {
+    // Cookie-based WS: browsers send cookies for same-origin WebSocket upgrades.
+    // For cross-origin, this requires the server to set SameSite=None;Secure.
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const host  = new URL(API_URL).host;
+    wsUrl = `${proto}://${host}/ws/presence/admin`;
+  }
+
+  presenceWs = new WebSocket(wsUrl);
 
   presenceWs.onopen = () => { startPresencePing(); };
   presenceWs.onmessage = (e) => {
@@ -1506,11 +1527,11 @@ function renderOnlineUsers(users, total) {
     const idleMin = Math.floor(u.idle_seconds / 60);
     const idleTxt = idleMin > 0 ? `${idleMin}m ago` : 'just now';
     return `<tr>
-      <td style="font-family:var(--mono);font-size:11px">${u.client_id.slice(0,8)}…</td>
-      <td>${!u.user_id ? '<span style="color:var(--text3)">Guest</span>' : u.user_id}</td>
-      <td style="font-family:var(--mono);font-size:11px">${u.page}</td>
+      <td style="font-family:var(--mono);font-size:11px">${escapeHtml(u.client_id.slice(0,8))}…</td>
+      <td>${!u.user_id ? '<span style="color:var(--text3)">Guest</span>' : escapeHtml(u.user_id)}</td>
+      <td style="font-family:var(--mono);font-size:11px">${escapeHtml(u.page)}</td>
       <td style="font-size:11px;color:var(--text3)">${formatLocalTime(u.connected_at)}</td>
-      <td><span class="badge badge-${u.idle_seconds<60?'active':'draft'}">${idleTxt}</span></td>
+      <td><span class="badge badge-${u.idle_seconds<60?'active':'draft'}">${escapeHtml(idleTxt)}</span></td>
     </tr>`;
   }).join('');
 }
@@ -1543,15 +1564,15 @@ function renderSessions() {
     const ttlClass = s.ttl === 0 ? 'expired' : s.ttl < 10 ? 'warn' : 'ok';
     const ttlText  = s.ttl === 0 ? 'Expired' : `${s.ttl}m`;
     return `<tr>
-      <td style="font-family:var(--mono);font-size:11px;color:var(--accent)">${s.id}</td>
-      <td style="color:var(--text2)">${s.user}</td>
-      <td><span class="badge badge-active">${s.role}</span></td>
-      <td style="font-family:var(--mono);font-size:11px">${s.db}</td>
-      <td style="font-family:var(--mono)">${s.tables}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--accent)">${escapeHtml(s.id)}</td>
+      <td style="color:var(--text2)">${escapeHtml(s.user)}</td>
+      <td><span class="badge badge-active">${escapeHtml(s.role)}</span></td>
+      <td style="font-family:var(--mono);font-size:11px">${escapeHtml(s.db)}</td>
+      <td style="font-family:var(--mono)">${escapeHtml(s.tables)}</td>
       <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${formatLocalDateTime(s.created)}</td>
-      <td><span class="ttl-badge ${ttlClass}">⏱ ${ttlText}</span></td>
-      <td><span class="badge badge-${s.status==='active'?'active':s.status==='warning'?'draft':'deprecated'}">${s.status}</span></td>
-      <td><div class="row-actions"><button class="row-btn danger" onclick="revokeSession('${s.id}')">✕ Revoke</button></div></td>
+      <td><span class="ttl-badge ${ttlClass}">⏱ ${escapeHtml(ttlText)}</span></td>
+      <td><span class="badge badge-${s.status==='active'?'active':s.status==='warning'?'draft':'deprecated'}">${escapeHtml(s.status)}</span></td>
+      <td><div class="row-actions"><button class="row-btn danger" onclick="revokeSession('${escapeHtml(s.id)}')">✕ Revoke</button></div></td>
     </tr>`;
   }).join('');
 }
@@ -1596,8 +1617,6 @@ function setLogFilter(level, btn) {
 }
 
 async function fetchLogs() {
-  const token = _getToken();
-  if (!token) return;
   try {
     const data     = await apiCall('/api/logs');
     const terminal = document.getElementById('logTerminal');
@@ -1613,9 +1632,9 @@ function appendLogLine(terminal, timestamp, level, message, sourceFile) {
   const line = document.createElement('div');
   line.className = 'log-line';
   const fileBadge = sourceFile
-    ? `<span class="log-file" title="${sourceFile}">${_shortSourceFile(sourceFile)}</span>`
+    ? `<span class="log-file" title="${escapeHtml(sourceFile)}">${escapeHtml(_shortSourceFile(sourceFile))}</span>`
     : '';
-  line.innerHTML = `<span class="log-ts">${ts}</span><span class="log-lvl ${(level||'info').toLowerCase()}">${level}</span>${fileBadge}<span class="log-msg">${message}</span>`;
+  line.innerHTML = `<span class="log-ts">${escapeHtml(ts)}</span><span class="log-lvl ${escapeHtml((level||'info').toLowerCase())}">${escapeHtml(level)}</span>${fileBadge}<span class="log-msg">${escapeHtml(message)}</span>`;
   terminal.appendChild(line);
   const lines = terminal.querySelectorAll('.log-line');
   if (lines.length > 200) lines[0].remove();
@@ -1664,9 +1683,8 @@ function toggleAutoScroll() {
 }
 
 setInterval(async () => {
-  const token    = _getToken();
   const terminal = document.getElementById('logTerminal');
-  if (!token || !terminal) return;
+  if (!terminal) return;
   try {
     const data    = await apiCall('/api/logs/new');
     const entries = data.data || [];
@@ -2181,17 +2199,17 @@ function renderActivityTable() {
   } else {
     tbody.innerHTML = page.map(a => `
       <tr style="cursor:default">
-        <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${a.id}</td>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${escapeHtml(a.id)}</td>
         <td>
           <div style="display:flex;align-items:center;gap:8px">
-            <div style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${(a.username||'?')[0].toUpperCase()}</div>
-            <span style="font-weight:500;font-size:13px">${a.username || '—'}</span>
+            <div style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${escapeHtml((a.username||'?')[0].toUpperCase())}</div>
+            <span style="font-weight:500;font-size:13px">${escapeHtml(a.username || '—')}</span>
           </div>
         </td>
-        <td><span class="badge badge-${actionBadgeClass(a.action)}">${actionLabel(a.action)}</span></td>
-        <td style="font-size:12px;color:var(--text3)">${a.target_type || '—'}</td>
-        <td style="font-family:var(--mono);font-size:11px">${a.target_id ?? '—'}</td>
-        <td style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(a.summary||'').replace(/"/g,'&quot;')}">${a.summary || '—'}</td>
+        <td><span class="badge badge-${actionBadgeClass(a.action)}">${escapeHtml(actionLabel(a.action))}</span></td>
+        <td style="font-size:12px;color:var(--text3)">${escapeHtml(a.target_type || '—')}</td>
+        <td style="font-family:var(--mono);font-size:11px">${escapeHtml(a.target_id ?? '—')}</td>
+        <td style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(a.summary||'')}">${escapeHtml(a.summary || '—')}</td>
         <td>${formatActivityDate(a.created_at)}</td>
         <td>
           <button class="row-btn" title="ดูรายละเอียด" onclick="openActivityDetail(${a.id})">🔍</button>
@@ -2247,8 +2265,8 @@ async function openActivityDetail(id) {
             <table style="width:100%;border-collapse:collapse">
               ${Object.entries(sec.data).map(([k,v]) => `
                 <tr style="border-bottom:1px solid var(--border)">
-                  <td style="padding:8px 16px;font-size:12px;color:var(--text3);font-family:var(--mono);width:140px;white-space:nowrap">${k}</td>
-                  <td style="padding:8px 16px;font-size:12px;word-break:break-all">${v === null ? '<em style="color:var(--text3)">null</em>' : String(v)}</td>
+                  <td style="padding:8px 16px;font-size:12px;color:var(--text3);font-family:var(--mono);width:140px;white-space:nowrap">${escapeHtml(k)}</td>
+                  <td style="padding:8px 16px;font-size:12px;word-break:break-all">${v === null ? '<em style="color:var(--text3)">null</em>' : escapeHtml(String(v))}</td>
                 </tr>`).join('')}
             </table>
           </div>
@@ -2256,7 +2274,7 @@ async function openActivityDetail(id) {
       });
 
       if (!sections.length) {
-        detailHtml = `<div style="padding:0 24px"><pre style="font-size:11px;background:var(--bg2);padding:16px;border-radius:8px;overflow:auto">${JSON.stringify(detail, null, 2)}</pre></div>`;
+        detailHtml = `<div style="padding:0 24px"><pre style="font-size:11px;background:var(--bg2);padding:16px;border-radius:8px;overflow:auto">${escapeHtml(JSON.stringify(detail, null, 2))}</pre></div>`;
       }
     } else {
       detailHtml = `<div style="padding:0 24px;font-size:13px;color:var(--text3)">ไม่มีข้อมูลรายละเอียดเพิ่มเติม</div>`;
@@ -2267,19 +2285,19 @@ async function openActivityDetail(id) {
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:0 24px 20px;border-bottom:1px solid var(--border);margin-bottom:20px">
           <div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px">ผู้ใช้งาน</div>
-            <div style="font-weight:600;font-size:14px">${act.username}</div>
+            <div style="font-weight:600;font-size:14px">${escapeHtml(act.username)}</div>
           </div>
           <div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Action</div>
-            <span class="badge badge-${actionBadgeClass(act.action)}">${actionLabel(act.action)}</span>
+            <span class="badge badge-${actionBadgeClass(act.action)}">${escapeHtml(actionLabel(act.action))}</span>
           </div>
           <div>
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Target</div>
-            <div style="font-size:13px">${act.target_type}${act.target_id ? ' #'+act.target_id : ''}</div>
+            <div style="font-size:13px">${escapeHtml(act.target_type)}${act.target_id ? ' #'+escapeHtml(act.target_id) : ''}</div>
           </div>
           <div style="grid-column:1/-1">
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px">สรุป</div>
-            <div style="font-size:13px">${act.summary || '—'}</div>
+            <div style="font-size:13px">${escapeHtml(act.summary || '—')}</div>
           </div>
           <div style="grid-column:1/-1">
             <div style="font-size:11px;color:var(--text3);margin-bottom:4px">วันที่ / เวลา</div>
@@ -2289,7 +2307,7 @@ async function openActivityDetail(id) {
         ${detailHtml}
       </div>`;
   } catch (e) {
-    body.innerHTML = `<div style="padding:24px;color:var(--error)">โหลดข้อมูลล้มเหลว: ${e.message}</div>`;
+    body.innerHTML = `<div style="padding:24px;color:var(--error)">โหลดข้อมูลล้มเหลว: ${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -2337,7 +2355,7 @@ async function fetchUsers() {
     _applyUserAdminUI();
   } catch (e) {
     const tbody = document.getElementById('usersBody');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--error)">โหลดข้อมูลล้มเหลว: ${e.message}</td></tr>`;
+    if (tbody) tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--error)">โหลดข้อมูลล้มเหลว: ${escapeHtml(e.message)}</td></tr>`;
   }
 }
 
@@ -2377,17 +2395,17 @@ function renderUsersTable() {
 
   tbody.innerHTML = _usersData.map(u => `
     <tr>
-      <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${u.id}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${escapeHtml(u.id)}</td>
       <td>
         <div style="display:flex;align-items:center;gap:8px">
-          <div style="width:30px;height:30px;border-radius:50%;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${(u.username||'?')[0].toUpperCase()}</div>
+          <div style="width:30px;height:30px;border-radius:50%;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">${escapeHtml((u.username||'?')[0].toUpperCase())}</div>
           <div>
-            <div style="font-weight:600;font-size:13px">${u.username}</div>
+            <div style="font-weight:600;font-size:13px">${escapeHtml(u.username)}</div>
           </div>
         </div>
       </td>
-      <td style="font-size:13px;color:var(--text2)">${u.display_name || '—'}</td>
-      <td><span class="badge badge-${roleBadgeClass(u.role)}">${roleLabel(u.role)}</span></td>
+      <td style="font-size:13px;color:var(--text2)">${escapeHtml(u.display_name || '—')}</td>
+      <td><span class="badge badge-${roleBadgeClass(u.role)}">${escapeHtml(roleLabel(u.role))}</span></td>
       <td>
         <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;${u.is_active ? 'color:#34d399' : 'color:var(--text3)'}">
           ${u.is_active ? '● Active' : '○ Inactive'}
@@ -2399,8 +2417,8 @@ function renderUsersTable() {
         ${isAdmin ? `
         <div class="row-actions">
           <button class="row-btn" title="แก้ไข" onclick="openUserModal(${u.id})">✎</button>
-          <button class="row-btn" title="Reset Password" onclick="openResetPwModal(${u.id},'${u.username}')">🔑</button>
-          <button class="row-btn danger" title="ลบ" onclick="deleteUser(${u.id},'${u.username}')">✕</button>
+          <button class="row-btn" title="Reset Password" onclick="openResetPwModal(${u.id},'${escapeHtml(u.username)}')">🔑</button>
+          <button class="row-btn danger" title="ลบ" onclick="deleteUser(${u.id},'${escapeHtml(u.username)}')">✕</button>
         </div>` : ''}
       </td>
     </tr>`).join('');
@@ -2810,17 +2828,17 @@ function _renderAdminActivityTable() {
         return `<span style="display:block;font-size:12px;font-weight:600">${d.toLocaleDateString('th-TH',{year:'numeric',month:'short',day:'numeric'})}</span><span style="display:block;font-size:11px;color:var(--text3)">${d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</span>`;
       })() : '—';
       return `<tr>
-        <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${a.id}</td>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--text3)">${escapeHtml(a.id)}</td>
         <td>
           <div style="display:flex;align-items:center;gap:8px">
-            <div style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${avatar}</div>
-            <span style="font-weight:500;font-size:13px">${a.username || '—'}</span>
+            <div style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0">${escapeHtml(avatar)}</div>
+            <span style="font-weight:500;font-size:13px">${escapeHtml(a.username || '—')}</span>
           </div>
         </td>
-        <td><span class="badge badge-${actionClass}">${actionLabel}</span></td>
-        <td style="font-size:12px;color:var(--text3)">${a.target_type || '—'}</td>
-        <td style="font-family:var(--mono);font-size:11px">${a.target_id ?? '—'}</td>
-        <td style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(a.summary||'').replace(/"/g,'&quot;')}">${a.summary || '—'}</td>
+        <td><span class="badge badge-${actionClass}">${escapeHtml(actionLabel)}</span></td>
+        <td style="font-size:12px;color:var(--text3)">${escapeHtml(a.target_type || '—')}</td>
+        <td style="font-family:var(--mono);font-size:11px">${escapeHtml(a.target_id ?? '—')}</td>
+        <td style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(a.summary||'')}">${escapeHtml(a.summary || '—')}</td>
         <td>${dateStr}</td>
         <td><button class="row-btn" title="รายละเอียด" onclick="openAdminLogDetail(${a.id})">🔍</button></td>
       </tr>`;
@@ -2868,28 +2886,28 @@ async function openAdminLogDetail(id) {
           <div style="font-size:12px;font-weight:700;color:${sec.color};margin-bottom:8px;padding:0 24px">${sec.label}</div>
           <div style="background:var(--bg2);border-radius:8px;margin:0 16px;overflow:hidden">
             <table style="width:100%;border-collapse:collapse">
-              ${Object.entries(sec.data).map(([k,v]) => `<tr style="border-bottom:1px solid var(--border)"><td style="padding:8px 16px;font-size:12px;color:var(--text3);font-family:var(--mono);width:140px">${k}</td><td style="padding:8px 16px;font-size:12px;word-break:break-all">${v===null?'<em style="color:var(--text3)">null</em>':String(v)}</td></tr>`).join('')}
+              ${Object.entries(sec.data).map(([k,v]) => `<tr style="border-bottom:1px solid var(--border)"><td style="padding:8px 16px;font-size:12px;color:var(--text3);font-family:var(--mono);width:140px">${escapeHtml(k)}</td><td style="padding:8px 16px;font-size:12px;word-break:break-all">${v===null?'<em style="color:var(--text3)">null</em>':escapeHtml(String(v))}</td></tr>`).join('')}
             </table>
           </div>
         </div>`;
       });
-      if (!sections.length) detailHtml = `<div style="padding:0 24px"><pre style="font-size:11px;background:var(--bg2);padding:16px;border-radius:8px;overflow:auto">${JSON.stringify(detail,null,2)}</pre></div>`;
+      if (!sections.length) detailHtml = `<div style="padding:0 24px"><pre style="font-size:11px;background:var(--bg2);padding:16px;border-radius:8px;overflow:auto">${escapeHtml(JSON.stringify(detail,null,2))}</pre></div>`;
     } else {
       detailHtml = `<div style="padding:0 24px;font-size:13px;color:var(--text3)">ไม่มีรายละเอียดเพิ่มเติม</div>`;
     }
     body.innerHTML = `
       <div style="padding:20px 0 8px">
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:0 24px 20px;border-bottom:1px solid var(--border);margin-bottom:20px">
-          <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">ผู้ใช้งาน</div><div style="font-weight:600;font-size:14px">${act.username}</div></div>
-          <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Action</div><span class="badge badge-${{ create:'success', update:'warning', delete:'error', bulk_import:'info' }[act.action]||'draft'}">${act.action}</span></div>
-          <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Target</div><div style="font-size:13px">${act.target_type}${act.target_id?' #'+act.target_id:''}</div></div>
-          <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">สรุป</div><div style="font-size:13px">${act.summary||'—'}</div></div>
+          <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">ผู้ใช้งาน</div><div style="font-weight:600;font-size:14px">${escapeHtml(act.username)}</div></div>
+          <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Action</div><span class="badge badge-${{ create:'success', update:'warning', delete:'error', bulk_import:'info' }[act.action]||'draft'}">${escapeHtml(act.action)}</span></div>
+          <div><div style="font-size:11px;color:var(--text3);margin-bottom:4px">Target</div><div style="font-size:13px">${escapeHtml(act.target_type)}${act.target_id?' #'+escapeHtml(act.target_id):''}</div></div>
+          <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">สรุป</div><div style="font-size:13px">${escapeHtml(act.summary||'—')}</div></div>
           <div style="grid-column:1/-1"><div style="font-size:11px;color:var(--text3);margin-bottom:4px">วันที่ / เวลา</div><div style="font-size:13px;font-family:var(--mono)">${formatActivityDate(act.created_at)}</div></div>
         </div>
         ${detailHtml}
       </div>`;
   } catch (e) {
-    body.innerHTML = `<div style="padding:24px;color:var(--error)">โหลดล้มเหลว: ${e.message}</div>`;
+    body.innerHTML = `<div style="padding:24px;color:var(--error)">โหลดล้มเหลว: ${escapeHtml(e.message)}</div>`;
   }
 }
 

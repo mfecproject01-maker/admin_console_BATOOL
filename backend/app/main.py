@@ -17,6 +17,7 @@ from app.middleware.rate_limit_middleware  import RateLimitMiddleware
 from app.db.database import init_db
 from app import sync_engine
 from app import log_retention_scheduler
+from app.core.ws_ticket import start_cleanup_task as start_ws_ticket_cleanup
 
 admin_logs_router = None
 for module_name in ("app.routers.admin_logs", "app.routers.adminlogs", "app.routers.admin_log"):
@@ -96,6 +97,9 @@ async def on_startup():
 
     asyncio.create_task(_evict_stale())
     logger.info("Presence heartbeat monitor started")
+
+    start_ws_ticket_cleanup()
+    logger.info("WebSocket ticket cleanup task started")
 
     sync_engine.start_scheduler()
     logger.info("Sync engine scheduler started")

@@ -3,45 +3,82 @@ app/routers/presence.py
 ───────────────────────
 Real-time online user tracking via FastAPI WebSocket.
 
-  ws://host/ws/presence              ← user pages connect here
-  ws://host/ws/presence/admin?token= ← admin console (requires JWT)
+  ws://host/ws/presence                      ← user pages connect here
+  ws://host/ws/presence/admin?ticket=<tok>   ← admin console (single-use WS ticket)
+  ws://host/ws/presence/admin?token=<jwt>    ← legacy fallback (Bearer token in URL)
+                                               kept for backward compatibility;
+                                               will be removed in a future release.
+
+Authentication preference order (admin endpoint):
+  1. ?ticket=  — short-lived single-use ticket issued by POST /api/auth/ws-ticket
+  2. ?token=   — legacy JWT in query string (deprecated, logs a warning)
 """
 
 import json
 import uuid
 import asyncio
+import logging
 from datetime import datetime, timezone
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException
-from jose import JWTError, jwt
 
-from app.core.config import settings
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from jose import JWTError, jwt
+from typing import Optional
+
+from app.core.config   import settings
+from app.core.ws_ticket import consume_ticket
 
 ALGORITHM = "HS256"
+logger    = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Presence"])
 
-online_users: dict[str, dict] = {}
-admin_connections: set[WebSocket] = set()
+online_users:      dict[str, dict] = {}
+admin_connections: set[WebSocket]  = set()
 
 HEARTBEAT_INTERVAL = 30
 HEARTBEAT_TIMEOUT  = 90
 
 
-# ── Auth helper ───────────────────────────────────────────────────────────────
+# ── Auth helpers ───────────────────────────────────────────────────────────────
 
-def _verify_token(token: str) -> str:
-    """ตรวจ JWT แล้วคืน username หรือ raise ถ้า invalid"""
+def _verify_jwt(token: str) -> Optional[str]:
+    """Decode a JWT and return the username, or None if invalid."""
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if not username:
-            raise ValueError("no sub")
-        return username
-    except (JWTError, ValueError):
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        payload  = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        return username if username else None
+    except (JWTError, Exception):
+        return None
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+def _authenticate_ws(ticket: Optional[str], token: Optional[str]) -> Optional[str]:
+    """
+    Resolve the authenticated username for an admin WS connection.
+
+    Priority:
+      1. Single-use ticket (secure path)
+      2. Legacy JWT query-param (deprecated — emits a warning)
+
+    Returns username on success, None on failure.
+    """
+    if ticket:
+        username = consume_ticket(ticket)
+        if username:
+            return username
+        # Ticket was invalid/expired/already-used
+        logger.warning("WS admin: invalid or expired ticket presented")
+        return None
+
+    if token:
+        logger.warning(
+            "WS admin: legacy ?token= auth used — upgrade frontend to use /api/auth/ws-ticket"
+        )
+        return _verify_jwt(token)
+
+    return None
+
+
+# ── Shared helpers ─────────────────────────────────────────────────────────────
 
 def _serialize_users() -> list[dict]:
     now = datetime.now(timezone.utc).timestamp()
@@ -63,7 +100,7 @@ async def _broadcast_to_admins(event: str, payload: dict) -> None:
 
 
 async def _evict_stale() -> None:
-    """Background task: ลบ users ที่ไม่ ping มาเกิน timeout"""
+    """Background task: remove users that have not pinged within the timeout."""
     while True:
         await asyncio.sleep(HEARTBEAT_INTERVAL)
         now   = datetime.now(timezone.utc).timestamp()
@@ -80,7 +117,7 @@ async def _evict_stale() -> None:
             )
 
 
-# ── User WebSocket ────────────────────────────────────────────────────────────
+# ── User WebSocket ─────────────────────────────────────────────────────────────
 
 @router.websocket("/ws/presence")
 async def user_presence(ws: WebSocket):
@@ -115,8 +152,8 @@ async def user_presence(ws: WebSocket):
                 online_users[client_id]["last_ping"] = datetime.now(timezone.utc).timestamp()
                 await ws.send_text(json.dumps({"event": "pong"}))
             elif event == "page_change":
-                online_users[client_id]["page"]      = msg.get("page", "/")
-                online_users[client_id]["last_ping"]  = datetime.now(timezone.utc).timestamp()
+                online_users[client_id]["page"]     = msg.get("page", "/")
+                online_users[client_id]["last_ping"] = datetime.now(timezone.utc).timestamp()
                 await _broadcast_to_admins(
                     "update_online_users",
                     {"users": _serialize_users(), "total": len(online_users)},
@@ -131,17 +168,23 @@ async def user_presence(ws: WebSocket):
         )
 
 
-# ── Admin WebSocket — ต้องมี JWT token ───────────────────────────────────────
+# ── Admin WebSocket ────────────────────────────────────────────────────────────
 
 @router.websocket("/ws/presence/admin")
 async def admin_presence(
-    ws:    WebSocket,
-    token: str = Query(..., description="JWT access token"),
+    ws:     WebSocket,
+    ticket: Optional[str] = Query(None, description="Single-use WS ticket from /api/auth/ws-ticket"),
+    token:  Optional[str] = Query(None, description="[Deprecated] JWT access token"),
 ):
-    # ตรวจ token ก่อน accept — ถ้า invalid ปิดทันที
-    try:
-        username = _verify_token(token)
-    except HTTPException:
+    """
+    Admin console real-time presence feed.
+
+    Authenticate with a single-use ticket obtained from POST /api/auth/ws-ticket.
+    The legacy ?token= parameter is still accepted but deprecated.
+    """
+    username = _authenticate_ws(ticket, token)
+    if not username:
+        # Reject before accepting — sends HTTP 403 during the WS upgrade handshake
         await ws.close(code=4001)
         return
 
@@ -158,7 +201,7 @@ async def admin_presence(
         "last_ping":    now.timestamp(),
     }
 
-    # ส่ง snapshot ปัจจุบันทันทีหลัง connect
+    # Send current snapshot immediately after connecting
     await ws.send_text(json.dumps({
         "event": "update_online_users",
         "users": _serialize_users(),
@@ -182,7 +225,7 @@ async def admin_presence(
         )
 
 
-# ── REST snapshot ─────────────────────────────────────────────────────────────
+# ── REST snapshot ──────────────────────────────────────────────────────────────
 
 @router.get("/api/presence")
 async def get_presence():

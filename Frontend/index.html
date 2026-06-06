@@ -1715,6 +1715,12 @@ MySQL,INT,PostgreSQL,INTEGER,approved</pre>
 <div class="toast-container" id="toastContainer"></div>
 
 <script src="vendor/xlsx.full.min.js"></script>
+
+<!-- Backend API URL — เปลี่ยนเป็น URL จริงของ Render backend -->
+<script>
+  window.BA_API_URL = "https://admin-console-batool.onrender.com";
+</script>
+
 <script src="app.js"></script>
 
 <script>
@@ -1740,41 +1746,30 @@ let lockedUntil    = null;
 })();
 
 (function checkSession() {
-  const token = localStorage.getItem('ba_token') || sessionStorage.getItem('ba_token');
-  const raw   = localStorage.getItem('ba_session') || sessionStorage.getItem('ba_session');
-  if (token && raw) {
-    try {
-      const data = JSON.parse(raw);
-      if (data.expiry > Date.now()) {
-        // verify role จาก API ทุกครั้งที่ reload — ไม่เชื่อ cache ใน localStorage
-        const apiBase = typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000';
-        fetch(`${apiBase}/api/auth/me`, {
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        })
-          .then(r => r.json())
-          .then(json => {
-            data.role = json.data?.role || 'viewer';
-            const storage = localStorage.getItem('ba_token') ? localStorage : sessionStorage;
-            storage.setItem('ba_session', JSON.stringify(data));
-            mountApp(data);
-          })
-          .catch(() => {
-            // token หมดอายุหรือ API ไม่ตอบ — logout
-            localStorage.removeItem('ba_token');
-            localStorage.removeItem('ba_session');
-            sessionStorage.removeItem('ba_token');
-            sessionStorage.removeItem('ba_session');
-            document.body.classList.add('logged-out');
-          });
-        return;
-      }
-    } catch(_) {}
-    localStorage.removeItem('ba_token');
-    localStorage.removeItem('ba_session');
-    sessionStorage.removeItem('ba_token');
-    sessionStorage.removeItem('ba_session');
-  }
-  document.body.classList.add('logged-out');
+  // Cookie-based auth: the HttpOnly cookie is sent automatically.
+  // We verify the session by calling /api/auth/me with credentials: 'include'.
+  const apiBase = typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000';
+
+  fetch(`${apiBase}/api/auth/me`, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+  })
+    .then(r => {
+      if (!r.ok) throw new Error('Not authenticated');
+      return r.json();
+    })
+    .then(json => {
+      if (!json.success || !json.data?.username) throw new Error('Invalid session');
+      const sessionData = {
+        username: json.data.username,
+        role: json.data.role || 'viewer',
+        expiry: Date.now() + 8 * 60 * 60 * 1000,
+      };
+      mountApp(sessionData);
+    })
+    .catch(() => {
+      document.body.classList.add('logged-out');
+    });
 })();
 
 function togglePw() {
@@ -1858,6 +1853,7 @@ async function doLogin() {
   try {
     const res  = await fetch(`${typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000'}/api/auth/login`, {
       method:  'POST',
+      credentials: 'include',            // accept the HttpOnly cookie from the response
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ username, password }),
     });
@@ -1874,18 +1870,14 @@ async function doLogin() {
       throw new Error(json.detail || json.message || 'Invalid credentials');
     }
 
-    const token = json.data.access_token;
-
-    // บันทึก token ก่อน เพื่อให้ fetch /me ได้
-    if (remember) localStorage.setItem('ba_token', token);
-    else          sessionStorage.setItem('ba_token', token);
-
-    // ดึง role จริงจาก /api/auth/me — ไม่ hardcode
+    // Token is stored in an HttpOnly cookie by the server — never in JS storage.
+    // Fetch the real role from /me (cookie is sent automatically).
     let realRole = 'viewer';
     try {
       const apiBase = typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000';
       const meRes  = await fetch(`${apiBase}/api/auth/me`, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
       });
       const meJson = await meRes.json();
       realRole = meJson.data?.role || 'viewer';
@@ -1896,10 +1888,8 @@ async function doLogin() {
       role:   realRole,
       expiry: Date.now() + (remember ? 7*24*60*60*1000 : 8*60*60*1000),
     };
-    if (remember) localStorage.setItem('ba_session', JSON.stringify(sessionData));
-    else          sessionStorage.setItem('ba_session', JSON.stringify(sessionData));
 
-    await registerLoginSession(username, token, realRole);
+    await registerLoginSession(username, realRole);
 
     failedAttempts = 0;
     document.getElementById('loginAttempts').textContent = '';
@@ -1936,7 +1926,7 @@ async function doLogin() {
   }
 }
 
-async function registerLoginSession(username, token, role = 'viewer') {
+async function registerLoginSession(username, role = 'viewer') {
   const sessionId = `auth-${username}`;
   const payload = {
     id: sessionId,
@@ -1950,17 +1940,20 @@ async function registerLoginSession(username, token, role = 'viewer') {
   try {
     let res = await fetch(`${apiBase}/api/sessions`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (res.status === 409) {
       await fetch(`${apiBase}/api/sessions/${encodeURIComponent(sessionId)}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
       });
       res = await fetch(`${apiBase}/api/sessions`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
     }
@@ -2002,7 +1995,7 @@ function mountApp(session) {
 }
 
 window.doLogout = async function() {
-  // ปิด WebSocket presence ก่อน — หยุด auto-reconnect
+  // Close WebSocket presence before logout — stop auto-reconnect
   if (typeof presenceWs !== 'undefined' && presenceWs) {
     presenceWs.onclose = null;
     presenceWs.close();
@@ -2010,19 +2003,21 @@ window.doLogout = async function() {
   }
   if (typeof stopPresencePing === 'function') stopPresencePing();
   if (typeof _currentRole !== 'undefined') _currentRole = 'viewer';
-  const token = localStorage.getItem('ba_token') || sessionStorage.getItem('ba_token');
-  if (token) {
-    try {
-      await fetch(`${typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000'}/api/auth/logout`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      });
-    } catch { /* local logout should still proceed */ }
-  }
+
+  try {
+    await fetch(`${typeof API_URL !== 'undefined' ? API_URL : 'http://localhost:8000'}/api/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',           // sends cookie; server will clear it
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch { /* local logout should still proceed */ }
+
+  // Clear any legacy token keys that may exist from older sessions
   ['ba_token','ba_session'].forEach(k => {
     localStorage.removeItem(k);
     sessionStorage.removeItem(k);
   });
+
   document.body.classList.add('logged-out');
   const screen = document.getElementById('login-screen');
   if (screen) {

@@ -26,8 +26,8 @@ def _set_auth_cookie(response: Response, token: str, max_age: int) -> None:
         value=token,
         max_age=max_age,
         httponly=True,
-        secure=_IS_PROD,          # HTTPS-only in production
-        samesite="lax",           # Protects against CSRF while allowing normal navigation
+        secure=True,              # always True — SameSite=None requires Secure
+        samesite="none",          # required for cross-origin (Vercel → Render)
         path="/",
     )
 
@@ -38,8 +38,8 @@ def _clear_auth_cookie(response: Response) -> None:
         key="ba_access_token",
         path="/",
         httponly=True,
-        secure=_IS_PROD,
-        samesite="lax",
+        secure=True,
+        samesite="none",
     )
 
 
@@ -190,6 +190,7 @@ async def get_ws_ticket(
         },
     )
 
+@router.post("/logout", response_model=APIResponse)
 async def logout(
     response: Response,
     current_user: dict = Depends(get_current_user),

@@ -1686,7 +1686,6 @@ function clearLogs() {
 // ── Wake BA Tool API ──────────────────────────────────────────────────────────
 
 const BA_TOOL_URL = 'https://ba-tool-yvb0.onrender.com';
-const WAKE_TIMEOUT_MS = 60_000; // Render cold start can take up to 60s
 
 async function wakeBAToolApi() {
   const btn  = document.getElementById('wakeApiBtn');
@@ -1695,46 +1694,25 @@ async function wakeBAToolApi() {
 
   if (btn.disabled) return;
 
-  // ── UI: loading state ──
   btn.disabled = true;
   btn.style.opacity = '0.7';
   if (icon) icon.textContent = '⏳';
 
-  const startTime = Date.now();
   _appendWakeLog(terminal, 'INFO', `กำลัง ping BA Tool API: ${BA_TOOL_URL} …`);
 
-  const controller = new AbortController();
-  const timeoutId  = setTimeout(() => controller.abort(), WAKE_TIMEOUT_MS);
-
   try {
-    const res = await fetch(`${BA_TOOL_URL}/health`, {
-      method: 'GET',
-      signal: controller.signal,
-      cache:  'no-store',
-    });
-    clearTimeout(timeoutId);
+    // เรียกผ่าน Backend Admin Console เพื่อหลีกเลี่ยง CORS
+    const data = await apiCall('/api/wake-batool', { method: 'POST' });
+    const elapsed = data.data?.elapsed_seconds?.toFixed(1) ?? '?';
+    const status  = data.data?.status ?? 'ok';
 
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-
-    if (res.ok) {
-      _appendWakeLog(terminal, 'INFO',  `✅ BA Tool API ตื่นแล้ว (${elapsed}s) — status ${res.status}`);
-      showToast(`BA Tool API พร้อมใช้งาน (${elapsed}s)`, 'success');
-      if (icon) icon.textContent = '✅';
-      setTimeout(() => { if (icon) icon.textContent = '⚡'; }, 3000);
-    } else {
-      _appendWakeLog(terminal, 'WARN', `⚠ BA Tool API ตอบ HTTP ${res.status} (${elapsed}s)`);
-      showToast(`BA Tool API ตอบ ${res.status}`, 'warn');
-      if (icon) icon.textContent = '⚠';
-      setTimeout(() => { if (icon) icon.textContent = '⚡'; }, 3000);
-    }
+    _appendWakeLog(terminal, 'INFO', `✅ BA Tool API ตื่นแล้ว (${elapsed}s) — status: ${escapeHtml(String(status))}`);
+    showToast(`BA Tool API พร้อมใช้งาน (${elapsed}s)`, 'success');
+    if (icon) icon.textContent = '✅';
+    setTimeout(() => { if (icon) icon.textContent = '⚡'; }, 3000);
   } catch (err) {
-    clearTimeout(timeoutId);
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    const msg = controller.signal.aborted
-      ? `หมดเวลา ${WAKE_TIMEOUT_MS / 1000}s — BA Tool อาจยังกำลัง boot`
-      : err.message;
-    _appendWakeLog(terminal, 'ERROR', `❌ Wake ล้มเหลว (${elapsed}s): ${msg}`);
-    showToast('Wake ล้มเหลว: ' + msg, 'error');
+    _appendWakeLog(terminal, 'ERROR', `❌ Wake ล้มเหลว: ${escapeHtml(err.message)}`);
+    showToast('Wake ล้มเหลว: ' + err.message, 'error');
     if (icon) icon.textContent = '⚡';
   } finally {
     btn.disabled = false;

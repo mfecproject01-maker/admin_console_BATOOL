@@ -11,6 +11,7 @@ from app.routers import sync as sync_router
 from app.routers.presence    import router as presence_router, _evict_stale
 from app.routers.activity    import router as activity_router
 from app.routers.users       import router as users_router
+from app.routers.wake        import router as wake_router
 from app.middleware.logging_middleware     import LoggingMiddleware
 from app.middleware.maintenance_middleware import MaintenanceMiddleware
 from app.middleware.rate_limit_middleware  import RateLimitMiddleware
@@ -140,3 +141,4 @@ app.include_router(presence_router)
 app.include_router(activity_router,         prefix="/api")
 app.include_router(users_router,            prefix="/api")
 app.include_router(admin_logs_router,       prefix="/api")
+app.include_router(wake_router,             prefix="/api")

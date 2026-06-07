@@ -106,6 +106,19 @@ async function apiCall(path, options = {}) {
 const TOKEN_REFRESH_INTERVAL = 55 * 60 * 1000;
 setInterval(async () => { if (_getToken()) await _refreshToken(); }, TOKEN_REFRESH_INTERVAL);
 
+// ── Auto-refresh ──────────────────────────────────────────────────────────────
+// Dashboard: ทุก 2 นาที
+setInterval(() => {
+  const dashPage = document.getElementById('page-dashboard');
+  if (dashPage && !dashPage.classList.contains('hidden')) refreshDashboard();
+}, 2 * 60 * 1000);
+
+// Sessions: ทุก 30 วินาที
+setInterval(() => {
+  const sessPage = document.getElementById('page-sessions');
+  if (sessPage && !sessPage.classList.contains('hidden')) fetchSessions();
+}, 30 * 1000);
+
 
 // ════════════════════════════════════════════════════════════
 //  THEME
@@ -177,9 +190,16 @@ function navigate(page) {
     const labels = { dashboard:'Dashboard', mapping:'Mapping Manager', databases:'Database Registry', sessions:'Session Monitor', settings:'Settings', activity:'Update Activity', adminlogs:'Admin Logs' };
     bcPage.textContent = labels[page] || page;
   }
-  if (page === 'activity') {
-    fetchActivities();
-  }
+
+  // แจ้ง backend ว่าอยู่หน้าไหน — จะแสดงใน Session Monitor > Online Users
+  _sendPageChange(page);
+
+  // โหลดข้อมูลสดทุกครั้งที่เปลี่ยนหน้า
+  if (page === 'dashboard')  { refreshDashboard(); }
+  if (page === 'mapping')    { fetchMappings(); }
+  if (page === 'databases')  { fetchDatabases(); }
+  if (page === 'sessions')   { fetchSessions(); }
+  if (page === 'activity')   { fetchActivities(); }
   if (page === 'settings') {
     _loadSettingsValues();
     loadSystemSettings();
@@ -189,6 +209,12 @@ function navigate(page) {
     fetchMyRole().then(() => fetchAdminLogs());
   }
   if (isMobile()) closeMobileSidebar();
+}
+
+function _sendPageChange(page) {
+  if (presenceWs?.readyState === WebSocket.OPEN) {
+    presenceWs.send(JSON.stringify({ event: 'page_change', page: page }));
+  }
 }
 
 document.querySelectorAll('.nav-item[data-page]').forEach(item => {
@@ -899,7 +925,12 @@ async function saveMapping() {
     return;
   }
   const saveBtn = document.getElementById('mSaveBtn');
-  if (saveBtn) { saveBtn.classList.add('btn-loading'); saveBtn.textContent = 'Saving…'; }
+  if (saveBtn) {
+    if (saveBtn.disabled) return;
+    saveBtn.disabled = true;
+    saveBtn.classList.add('btn-loading');
+    saveBtn.textContent = 'Saving…';
+  }
 
   const payload = {
     src_db:       getSearchableSelectValue('mSrcDb'),
@@ -929,7 +960,7 @@ async function saveMapping() {
     try { const parsed = JSON.parse(e.message); msg = parsed.message || msg; } catch {}
     showToast('Save failed: ' + msg, 'error');
   } finally {
-    if (saveBtn) { saveBtn.classList.remove('btn-loading'); saveBtn.textContent = 'Save Rule'; }
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.classList.remove('btn-loading'); saveBtn.textContent = 'Save Rule'; }
   }
 }
 
@@ -1437,7 +1468,12 @@ async function saveDatabase() {
   if (!ok) { showToast('Please fix the errors before saving', 'error'); return; }
 
   const saveBtn = document.querySelector('#dbModal .btn-primary');
-  if (saveBtn) { saveBtn.classList.add('btn-loading'); saveBtn.textContent = 'Saving…'; }
+  if (saveBtn) {
+    if (saveBtn.disabled) return;  // ป้องกัน double-click
+    saveBtn.disabled = true;
+    saveBtn.classList.add('btn-loading');
+    saveBtn.textContent = 'Saving…';
+  }
   const editId = document.getElementById('dbModal').dataset.editId;
   try {
     if (editId) {
@@ -1456,6 +1492,7 @@ async function saveDatabase() {
     showToast('Save failed: ' + msg, 'error');
   } finally {
     if (saveBtn) {
+      saveBtn.disabled = false;
       saveBtn.classList.remove('btn-loading');
       saveBtn.textContent = editId ? 'Save Changes' : 'Add Database';
     }
@@ -1502,7 +1539,18 @@ async function connectPresence() {
 
   presenceWs = new WebSocket(wsUrl);
 
-  presenceWs.onopen = () => { startPresencePing(); };
+  presenceWs.onopen = () => {
+    startPresencePing();
+    // แจ้ง backend ว่า admin online อยู่หน้าไหน
+    const currentPage = document.querySelector('.nav-item.active')?.dataset?.page || 'admin-console';
+    const username    = document.getElementById('avatarName')?.textContent?.trim() || 'admin';
+    presenceWs.send(JSON.stringify({
+      event:      'user_online',
+      user_id:    username,
+      page:       currentPage,
+      user_agent: navigator.userAgent.slice(0, 80),
+    }));
+  };
   presenceWs.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data);

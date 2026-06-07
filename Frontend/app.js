@@ -504,9 +504,26 @@ function renderMappingTable() {
 function renderMappingPagination(totalPages) {
   const pag = document.getElementById('mappingPagination');
   if (!pag) return;
-  let html = `<button class="page-btn" onclick="goMappingPage(${mappingCurrentPage-1})" ${mappingCurrentPage===1?'disabled':''}>‹</button>`;
-  for (let i = 1; i <= totalPages; i++) html += `<button class="page-btn ${i===mappingCurrentPage?'active':''}" onclick="goMappingPage(${i})">${i}</button>`;
-  html += `<button class="page-btn" onclick="goMappingPage(${mappingCurrentPage+1})" ${mappingCurrentPage===totalPages?'disabled':''}>›</button>`;
+  if (totalPages <= 1) { pag.innerHTML = ''; return; }
+
+  const cur = mappingCurrentPage;
+  const pages = [];
+
+  // เสมอแสดง: หน้าแรก, หน้าสุดท้าย, หน้าปัจจุบัน ±2
+  const show = new Set([1, totalPages]);
+  for (let i = Math.max(1, cur - 2); i <= Math.min(totalPages, cur + 2); i++) show.add(i);
+  const sorted = [...show].sort((a, b) => a - b);
+
+  let html = `<button class="page-btn" onclick="goMappingPage(${cur - 1})" ${cur === 1 ? 'disabled' : ''}>‹</button>`;
+
+  let prev = 0;
+  for (const p of sorted) {
+    if (p - prev > 1) html += `<span class="page-ellipsis">…</span>`;
+    html += `<button class="page-btn ${p === cur ? 'active' : ''}" onclick="goMappingPage(${p})">${p}</button>`;
+    prev = p;
+  }
+
+  html += `<button class="page-btn" onclick="goMappingPage(${cur + 1})" ${cur === totalPages ? 'disabled' : ''}>›</button>`;
   pag.innerHTML = html;
 }
 

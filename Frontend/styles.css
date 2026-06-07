@@ -1179,6 +1179,7 @@ body {
 .page-btn:hover { background: var(--surface2); color: var(--text); }
 .page-btn.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
 .page-btn:disabled { opacity: .4; cursor: default; }
+.page-ellipsis { font-size:12px; color:var(--text3); padding:0 4px; display:flex; align-items:center; user-select:none; }
 
 /* ── Database Registry ─────────────────────────── */
 .db-grid {

@@ -34,3 +34,7 @@ services:
 
       - key: ALLOWED_ORIGIN_REGEX
         sync: false  # Optional: regex for Vercel preview URLs, e.g.: https://your-app(-[a-z0-9]+)?\.vercel\.app
+
+      - key: BA_TOOL_BACKEND_URL
+        sync: false  # URL of BA Tool Render service, e.g.: https://ba-tool-yvb0.onrender.com
+                     # Find it in your BA Tool service → Settings → URL on Render Dashboard

@@ -4,11 +4,13 @@ routers/system.py
 เพิ่ม record_activity ใน start/stop/settings/maintenance
 """
 import logging
+import os
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import Dict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+import httpx
 
 from app.schemas.schemas import APIResponse
 from app.services import system_service
@@ -18,6 +20,27 @@ from app.db.models import AdminUser
 from app.routers.activity import record_activity
 
 logger = logging.getLogger(__name__)
+
+_BA_TOOL_URL = os.getenv(
+    "BA_TOOL_BACKEND_URL",
+    "https://ba-tool-yvb0.onrender.com",
+).rstrip("/")
+
+
+async def _notify_batool_cache_invalidate() -> None:
+    """บอก BA_TOOL ให้ล้าง maintenance cache ทันที หลัง admin toggle"""
+    url = f"{_BA_TOOL_URL}/system/maintenance/refresh"
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.post(url)
+        logger.info(
+            "[MAINTENANCE] BA_TOOL cache invalidated — HTTP %d", resp.status_code
+        )
+    except Exception as e:
+        # ไม่ให้ล้มเหลวนี้กระทบการ toggle — log แล้วผ่านต่อ
+        logger.warning(
+            "[MAINTENANCE] Could not notify BA_TOOL to invalidate cache: %s", e
+        )
 router = APIRouter(tags=["System"])
 
 
@@ -173,6 +196,10 @@ async def set_maintenance(
     )
     await db.commit()
     logger.info("Maintenance mode %s by admin %s", state, username)
+
+    # บอก BA_TOOL ให้ล้าง cache ทันที ไม่ต้องรอ TTL 10 วินาที
+    await _notify_batool_cache_invalidate()
+
     return APIResponse(
         success=True,
         message=f"Maintenance mode {state}ใช้งานแล้ว",

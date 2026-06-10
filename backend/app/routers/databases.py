@@ -18,6 +18,8 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import text
+
 from app.schemas.schemas import APIResponse
 from app.core.security import get_current_user
 from app.db.database import get_db
@@ -253,10 +255,22 @@ async def delete_database(
     data     = record.to_dict()
     username = current_user.get("username", "unknown")
 
-    # ── 3. Delete the record ──────────────────────────────────────────────────
+    # ── 3. Delete FK child rows first (cascade) ───────────────────────────────
+    # Supabase has a real FK constraint "fk_db" on datatype_raw_mapping.db_id
+    # and datatype_mapping.db_id that references database_records.id.
+    # SQLAlchemy ORM is unaware of these constraints (no relationship defined),
+    # so we must manually delete child rows before deleting the parent.
     try:
+        await db.execute(
+            text("DELETE FROM datatype_raw_mapping WHERE db_id = :id"),
+            {"id": db_id},
+        )
+        await db.execute(
+            text("DELETE FROM datatype_mapping WHERE db_id = :id"),
+            {"id": db_id},
+        )
         await db.delete(record)
-        await db.flush()          # flush so the DELETE hits the DB in this txn
+        await db.flush()
     except Exception as exc:
         await db.rollback()
         logger.error("Failed to delete database id=%s: %s", db_id, exc, exc_info=True)

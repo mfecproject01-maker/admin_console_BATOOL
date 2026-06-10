@@ -22,7 +22,7 @@ from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.database import AsyncSessionLocal
-from app.db.models import MappingRule, DatabaseRecord, DatatypeStandard
+from app.db.models import MappingRule, DatabaseRecord, DatatypeStandard, AdminConsoleLog
 from app.services import system_service
 
 logger = logging.getLogger(__name__)
@@ -239,7 +239,7 @@ async def _update_rule(rule_id: int, outcome: dict, retry_count: int) -> bool:
 # Main sync cycle
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def run_sync_cycle() -> dict:
+async def run_sync_cycle(triggered_by: str = "system") -> dict:
     """
     Sync ทุก row ที่ต้อง sync:
       - status = "pending"
@@ -256,7 +256,7 @@ async def run_sync_cycle() -> dict:
     metrics = {"processed": 0, "synced": 0, "errors": 0}
     cycle_start = datetime.now(timezone.utc)
     max_retries = await _get_max_retries()
-    logger.info("[sync] Cycle started (max_retries=%d)", max_retries)
+    logger.info("[sync] Cycle started by=%s (max_retries=%d)", triggered_by, max_retries)
 
     try:
         # ดึง rows ที่ต้อง sync (read-only session แยก)
@@ -328,6 +328,31 @@ async def run_sync_cycle() -> dict:
     metrics["elapsed_seconds"] = elapsed
     _last_run_at  = cycle_start
     _last_metrics = metrics
+
+    # ── บันทึก sync result ลง Admin Logs ─────────────────────────────────────
+    try:
+        level        = "ERROR" if metrics["errors"] > 0 else "INFO"
+        trigger_label = "Auto-sync" if triggered_by == "system" else f"Manual sync (by {triggered_by})"
+        message = (
+            f"[sync] {trigger_label} complete — "
+            f"processed={metrics['processed']} "
+            f"synced={metrics['synced']} "
+            f"errors={metrics['errors']} "
+            f"elapsed={elapsed}s"
+        )
+        async with AsyncSessionLocal() as db:
+            db.add(AdminConsoleLog(
+                level        = level,
+                message      = message,
+                detail       = f"metrics={metrics} triggered_by={triggered_by}",
+                source_file  = "sync_engine.py",
+                username     = triggered_by,
+                external_key = f"sync:{int(cycle_start.timestamp() * 1000)}",
+                created_at   = cycle_start,
+            ))
+            await db.commit()
+    except Exception as exc:
+        logger.warning("[sync] Could not write cycle result to admin logs: %s", exc)
     return metrics
 
 

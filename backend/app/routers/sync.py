@@ -32,8 +32,9 @@ async def trigger_sync(current_user: dict = Depends(get_current_user)):
     Manual trigger sync cycle ทันที
     ถ้ากำลัง sync อยู่ → return สถานะปัจจุบันแทน (ไม่ run ซ้อน)
     """
-    logger.info("[sync] Manual trigger by user=%s", current_user.get("username"))
-    metrics = await sync_engine.run_sync_cycle()
+    username = current_user.get("username", "unknown")
+    logger.info("[sync] Manual trigger by user=%s", username)
+    metrics = await sync_engine.run_sync_cycle(triggered_by=username)
     if metrics.get("skipped"):
         raise HTTPException(status_code=409, detail="Sync already in progress")
     return APIResponse(

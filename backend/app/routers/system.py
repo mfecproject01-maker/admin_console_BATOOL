@@ -144,6 +144,26 @@ async def update_settings(
     old_data = await system_service.get_settings(db)
     data     = await system_service.set_settings(db, body.settings)
     username = current_user.get("username", "unknown")
+
+    # ── Cascade TTL update to all active sessions ─────────────────────────────
+    # เมื่อ sec_session_timeout เปลี่ยน ต้อง update ttl_minutes ของทุก
+    # SessionRecord ที่มีอยู่ด้วย ไม่งั้น TTL Remaining บนหน้า Sessions
+    # จะยังแสดงค่าเก่าต่อไป เพราะ to_dict() คำนวณจาก created + ttl_minutes
+    if "sec_session_timeout" in body.settings:
+        try:
+            new_ttl = max(5, min(int(body.settings["sec_session_timeout"]), 1440))
+            from app.db.models import SessionRecord
+            result = await db.execute(select(SessionRecord))
+            sessions = result.scalars().all()
+            for s in sessions:
+                s.ttl_minutes = new_ttl
+            logger.info(
+                "Session timeout changed to %d min — updated %d session(s)",
+                new_ttl, len(sessions),
+            )
+        except Exception as exc:
+            logger.warning("Could not cascade TTL update to sessions: %s", exc)
+
     await record_activity(
         db          = db,
         username    = username,

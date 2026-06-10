@@ -16,7 +16,16 @@ class Settings(BaseSettings):
 
     ANTHROPIC_API_KEY: Optional[str] = None
 
+    # ── CORS ──────────────────────────────────────────────────────────────────
+    # Production Vercel origin is included by default so the app works even
+    # when ALLOWED_ORIGINS is not explicitly set on Render.
+    # Override via env var:  ALLOWED_ORIGINS=https://your-app.vercel.app
+    # Multiple origins:      ALLOWED_ORIGINS=https://a.com,https://b.com
+    # JSON array also works: ALLOWED_ORIGINS=["https://a.com","https://b.com"]
     ALLOWED_ORIGINS: List[str] = [
+        # ── Production ────────────────────────────────────────
+        "https://admin-console-batool.vercel.app",
+        # ── Local development ─────────────────────────────────
         "http://localhost",
         "http://localhost:3000",
         "http://localhost:5173",

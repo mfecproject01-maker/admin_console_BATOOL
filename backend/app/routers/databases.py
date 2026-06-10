@@ -1,7 +1,13 @@
 """
 routers/databases.py
 ────────────────────
-เพิ่ม record_activity ใน create / update / delete
+Fixed version:
+- DELETE /api/databases/:id  →  stable, no unhandled crashes
+  • Saves record data BEFORE delete (avoids detached-instance issues)
+  • record_activity called inside try/except so an activity log failure
+    does NOT roll back the actual delete
+  • Explicit 404 vs 500 separation
+- CORS-safe: all errors return JSON (never raw HTML from Starlette)
 """
 import re
 import logging
@@ -224,24 +230,68 @@ async def delete_database(
     db:           AsyncSession = Depends(get_db),
     current_user: dict         = Depends(get_current_user),
 ):
+    """
+    Delete a database record by ID.
+
+    Fix notes vs original:
+    1. `data = record.to_dict()` is captured BEFORE `db.delete(record)` to
+       avoid accessing a detached / expired ORM instance afterward.
+    2. `record_activity` is wrapped in its own try/except so an activity-log
+       failure does NOT roll back the actual delete — the delete always commits
+       as long as the DB constraint allows it.
+    3. Explicit HTTPException(404) vs generic 500 separation — the global
+       exception handler only fires for truly unexpected errors.
+    """
+    # ── 1. Fetch record ───────────────────────────────────────────────────────
     result = await db.execute(select(DatabaseRecord).where(DatabaseRecord.id == db_id))
     record = result.scalar_one_or_none()
+
     if not record:
         raise HTTPException(status_code=404, detail="Database not found")
 
+    # ── 2. Snapshot data BEFORE delete (avoids detached-instance errors) ──────
     data     = record.to_dict()
     username = current_user.get("username", "unknown")
-    await db.delete(record)
-    await record_activity(
-        db          = db,
-        username    = username,
-        action      = "delete",
-        target_type = "database",
-        target_id   = str(db_id),
-        summary     = f"ลบ database: {data['key']} ({data['name']})",
-        detail      = {"before": data},
-    )
-    await db.commit()
+
+    # ── 3. Delete the record ──────────────────────────────────────────────────
+    try:
+        await db.delete(record)
+        await db.flush()          # flush so the DELETE hits the DB in this txn
+    except Exception as exc:
+        await db.rollback()
+        logger.error("Failed to delete database id=%s: %s", db_id, exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"success": False, "message": "Failed to delete database record"},
+        ) from exc
+
+    # ── 4. Activity log (best-effort — never rolls back the delete) ───────────
+    try:
+        await record_activity(
+            db          = db,
+            username    = username,
+            action      = "delete",
+            target_type = "database",
+            target_id   = str(db_id),
+            summary     = f"ลบ database: {data['key']} ({data['name']})",
+            detail      = {"before": data},
+        )
+    except Exception as exc:
+        logger.warning(
+            "record_activity failed for delete db id=%s (non-fatal): %s", db_id, exc
+        )
+
+    # ── 5. Commit ─────────────────────────────────────────────────────────────
+    try:
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        logger.error("Commit failed for delete database id=%s: %s", db_id, exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"success": False, "message": "Database delete failed during commit"},
+        ) from exc
+
     logger.info("Database deleted: key=%s by user=%s", data["key"], username)
     return APIResponse(success=True, message="Database removed", data=data)
 

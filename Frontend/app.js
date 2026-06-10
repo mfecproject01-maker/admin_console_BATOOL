@@ -43,6 +43,7 @@ async function _refreshToken() {
   try {
     const res = await fetch(API_URL + '/api/auth/refresh', {
       method: 'POST',
+      credentials: 'include',   // send httpOnly cookie cross-origin
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
     });
     if (!res.ok) return false;
@@ -71,6 +72,7 @@ async function apiCall(path, options = {}) {
   try {
     res = await fetch(API_URL + path, {
       ...options,
+      credentials: 'include',   // required: send httpOnly cookie cross-origin (Vercel → Render)
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
@@ -1534,6 +1536,7 @@ async function connectPresence() {
   try {
     const ticketRes = await fetch(API_URL + '/api/auth/ws-ticket', {
       method: 'POST',
+      credentials: 'include',   // send httpOnly cookie cross-origin
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
     });
     if (ticketRes.ok) {

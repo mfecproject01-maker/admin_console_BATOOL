@@ -45,7 +45,14 @@ app = FastAPI(
     redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
 )
 
-# ── Middleware ────────────────────────────────────────────────────────────────
+# ── Middleware (FastAPI applies in LIFO order) ────────────────────────────────
+# Registration order here:  Logging → RateLimit → Maintenance → CORS
+# Execution order at runtime (LIFO): CORS → Maintenance → RateLimit → Logging
+#
+# CORS *must* be innermost so it runs first on the way in and last on the way
+# out — this guarantees that even error responses (500, 503, 429) carry the
+# correct Access-Control-Allow-Origin header and the browser doesn't swallow
+# them as a CORS error.
 app.add_middleware(LoggingMiddleware)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(MaintenanceMiddleware)
@@ -54,8 +61,9 @@ app.add_middleware(
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_origin_regex=settings.ALLOWED_ORIGIN_REGEX,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Authorization", "Content-Type", "Cookie"],
+    expose_headers=["Set-Cookie"],
 )
 
 
@@ -120,7 +128,15 @@ async def on_shutdown():
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    """
+    Catch-all error handler.
+
+    CORS note: by registering this handler we intercept exceptions BEFORE
+    Starlette's default handler can return a plain-text response that bypasses
+    CORSMiddleware.  We still rely on CORSMiddleware being the innermost layer
+    (added last, runs first) so it processes even our JSONResponse on the way out.
+    """
+    logger.error("Unhandled exception: %s", exc, exc_info=True)
     message = str(exc) if settings.ENVIRONMENT != "production" else "Internal server error"
     return JSONResponse(
         status_code=500,

@@ -1,24 +1,118 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+"""
+db/database.py  —  Supabase + PgBouncer compatible async engine
+═══════════════════════════════════════════════════════════════════
+
+Supabase มี connection pooler 2 โหมด:
+┌─────────────────┬──────────┬───────────────────────────────────────────┐
+│ โหมด             │ Port     │ ข้อจำกัด                                   │
+├─────────────────┼──────────┼───────────────────────────────────────────┤
+│ Session mode    │ 5432     │ ใช้ SQLAlchemy pool ได้ปกติ                │
+│ Transaction mode│ 6543     │ ห้ามใช้ prepared statements, ต้องใช้       │
+│                 │          │ NullPool เท่านั้น (ไม่ keep connection)    │
+└─────────────────┴──────────┴───────────────────────────────────────────┘
+
+โค้ดนี้ detect port อัตโนมัติ:
+  - port 6543 (หรือ ?pgbouncer=true) → NullPool + server-side binding
+  - port 5432 (direct / session mode) → pool ปกติ
+
+วิธีตั้งค่า DATABASE_URL บน Render:
+  Transaction mode (แนะนำสำหรับ Render free tier):
+    postgresql://postgres.[ref]:[pw]@aws-0-[region].pooler.supabase.com:6543/postgres
+
+  Session mode / Direct:
+    postgresql://postgres.[ref]:[pw]@aws-0-[region].pooler.supabase.com:5432/postgres
+    postgresql://postgres:[pw]@db.[ref].supabase.co:5432/postgres
+"""
+
+import logging
+import re
+from sqlalchemy.ext.asyncio import (
+    create_async_engine,
+    AsyncSession,
+    async_sessionmaker,
+)
+from sqlalchemy.pool import NullPool
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import text
 from typing import AsyncGenerator
 
 from app.core.config import settings
 
-_url = settings.DATABASE_URL
-if _url.startswith("postgresql://"):
-    _url = _url.replace("postgresql://", "postgresql+asyncpg://", 1)
-elif _url.startswith("postgres://"):
-    _url = _url.replace("postgres://", "postgresql+asyncpg://", 1)
+logger = logging.getLogger(__name__)
 
-engine = create_async_engine(
-    _url,
-    pool_size=5,
-    max_overflow=10,
-    pool_pre_ping=True,
-    echo=False,
-    connect_args={"statement_cache_size": 0},
-)
+# ── URL normalisation ─────────────────────────────────────────────────────────
+
+def _build_async_url(raw: str) -> str:
+    """Convert any postgres:// / postgresql:// URL to postgresql+asyncpg://."""
+    url = raw
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    return url
+
+
+def _is_transaction_pooler(raw_url: str) -> bool:
+    """
+    Return True when the URL points at Supabase Transaction-mode PgBouncer.
+    Heuristic: port 6543 in the URL, or explicit ?pgbouncer=true query param.
+    """
+    if "pgbouncer=true" in raw_url.lower():
+        return True
+    # match :6543/ or :6543? or :6543 at end of host section
+    match = re.search(r":(\d+)(?:[/?]|$)", raw_url.split("@")[-1])
+    if match and match.group(1) == "6543":
+        return True
+    return False
+
+
+# ── Engine factory ────────────────────────────────────────────────────────────
+
+_raw_url  = settings.DATABASE_URL
+_async_url = _build_async_url(_raw_url)
+_txn_mode  = _is_transaction_pooler(_raw_url)
+
+if _txn_mode:
+    # ── Transaction / PgBouncer mode ─────────────────────────────────────────
+    # NullPool: ไม่ keep connection ไว้ใน pool ของ SQLAlchemy เลย
+    #   → PgBouncer จะจัดการ pooling เอง ไม่มี prepared-statement conflict
+    # server_side_binds=True: ส่ง query parameters แบบ inline แทน $1/$2
+    #   → หลีกเลี่ยง "prepared statement already exists" error
+    logger.info(
+        "database.py: Supabase Transaction-mode pooler detected (port 6543) "
+        "→ using NullPool + server_side_binds"
+    )
+    engine = create_async_engine(
+        _async_url,
+        poolclass=NullPool,
+        echo=False,
+        connect_args={
+            "statement_cache_size": 0,   # asyncpg: disable prepared-statement cache
+            "server_settings": {
+                "application_name": "admin_console_batool",
+            },
+        },
+    )
+else:
+    # ── Session mode / Direct connection ─────────────────────────────────────
+    # ใช้ pool ปกติได้ แต่ยังใส่ statement_cache_size=0 ไว้เพื่อความปลอดภัย
+    logger.info(
+        "database.py: Direct / Session-mode connection detected "
+        "→ using connection pool (pool_size=5)"
+    )
+    engine = create_async_engine(
+        _async_url,
+        pool_size=5,
+        max_overflow=10,
+        pool_pre_ping=True,
+        echo=False,
+        connect_args={
+            "statement_cache_size": 0,
+            "server_settings": {
+                "application_name": "admin_console_batool",
+            },
+        },
+    )
 
 AsyncSessionLocal = async_sessionmaker(
     engine,
